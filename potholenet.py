@@ -10,7 +10,7 @@ import os
 class PotholeNet:
     """
     PotholeNet: Road Quality Classifier
-    Optimized for Royal Enfield Classic 350 ("The Baron")
+    Optimized for Royal Enfield Classic 350 ("Shadow")
     
     This class handles the ingestion of smartphone accelerometer data,
     filters out mechanical noise from the engine, and classifies
@@ -36,21 +36,24 @@ class PotholeNet:
         return filtfilt(b, a, data)
 
     def extract_features(self, window):
-        """
-        Feature Engineering: Transforms raw time-series into 
-        statistical features for the classifier.
-        """
-        # Focus primarily on the Z-axis (vertical displacement)
-        z_raw = window['z'].values
+        """Feature Engineering: RMS, Std Dev, and Peak Magnitude."""
+        # Check if the window is a DataFrame; if so, grab the 'z' column.
+        # Otherwise, assume it's already a slice of the z-axis data.
+        if isinstance(window, pd.DataFrame):
+            z_raw = window['z'].values
+        else:
+            # If it's a numpy array, we assume column 3 (index 2) is Z
+            # (time=0, x=1, y=2, z=3)
+            z_raw = window[:, 3] if window.ndim > 1 else window
+            
         z_filt = self._apply_butterworth_highpass(z_raw)
         
-        features = {
-            'std_dev': np.std(z_filt),           # Vertical variance
-            'peak_mag': np.max(np.abs(z_filt)),  # Max impact magnitude
-            'rms_energy': np.sqrt(np.mean(z_filt**2)), # Total energy
-            'ptp_amplitude': np.ptp(z_filt)      # Peak-to-Peak swing
-        }
-        return list(features.values())
+        return [
+            np.std(z_filt),
+            np.max(np.abs(z_filt)),
+            np.sqrt(np.mean(z_filt**2)),
+            np.ptp(z_filt)
+        ]
 
     def train_model(self, data_windows, labels):
         """
