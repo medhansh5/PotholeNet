@@ -1,5 +1,16 @@
+# Python bytecode
 __pycache__/
-*.pyc
-.DS_Store
+*.py[cod]
+*$py.class
+
+# Environments
 venv/
+env/
 .env
+
+# Data and Models (Keep the folders, ignore large temp files)
+*.pkl
+.DS_Store
+
+# Visualization Output
+impact_analysis.png
