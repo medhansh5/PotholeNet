@@ -36,7 +36,7 @@ PotholeNet/
 ## 🛠️ Installation & Usage
 ```bash
 # Clone the repository
-git clone [https://github.com/medhansh5/PotholeNet.git](https://github.com/medhansh5/PotholeNet.git)
+git clone https://github.com/medhansh5/PotholeNet.git
 
 # Install dependencies
 pip install -r requirements.txt
