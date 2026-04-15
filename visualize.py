@@ -1,44 +1,54 @@
+import sys
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 from potholenet import PotholeNet
 
-def plot_impact_analysis(csv_file):
-    """
-    Loads ride data and plots Raw vs. Filtered Z-axis acceleration.
-    This demonstrates the effectiveness of the Butterworth filter.
-    """
-    # 1. Load Data
-    df = pd.read_csv(csv_file)
+def run_visualization(file_path):
+    print(f"📈 Analyzing telemetry from: {file_path}")
     
-    # 2. Initialize the Detector
+    # 1. Load Data
+    try:
+        df = pd.read_csv(file_path)
+    except Exception as e:
+        print(f"❌ Error loading file: {e}")
+        return
+
+    # 2. Initialize PotholeNet for DSP
     detector = PotholeNet(sampling_rate=100)
     
-    # 3. Process a segment of the data
-    raw_z = df['z'].values
-    filtered_z = detector._apply_butterworth_highpass(raw_z)
+    # 3. Apply the Shadow-Specific Filter (Butterworth)
+    z_raw = df['z'].values
+    # Note: We use the internal filter logic from your PotholeNet class
+    z_filt = detector._apply_butterworth_highpass(z_raw)
+
+    # 4. Plotting
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
     
-    # 4. Create the Visualization
-    plt.figure(figsize=(12, 6))
-    
-    # Plot Raw Signal (Includes engine 'thump')
-    plt.subplot(2, 1, 1)
-    plt.plot(raw_z, color='red', alpha=0.5, label='Raw Signal (Engine + Road)')
-    plt.title(f"Sensor Data Analysis: {csv_file}")
-    plt.ylabel("Acceleration (m/s²)")
-    plt.legend()
-    
-    # Plot Filtered Signal (Pothole Signature)
-    plt.subplot(2, 1, 2)
-    plt.plot(filtered_z, color='blue', label='Filtered Signal (Road Anomalies Only)')
-    plt.xlabel("Samples (at 100Hz)")
-    plt.ylabel("Acceleration (m/s²)")
-    plt.legend()
-    
+    # Raw Signal (with Shadow's engine vibration)
+    ax1.plot(df['time'], z_raw, color='gray', alpha=0.5, label='Raw Z-Axis (Engine + Road)')
+    ax1.set_title("Shadow: Raw Sensor Telemetry")
+    ax1.set_ylabel("Acceleration (m/s²)")
+    ax1.legend()
+
+    # Filtered Signal (Road anomalies isolated)
+    ax2.plot(df['time'], z_filt, color='#f39c12', linewidth=1.5, label='Filtered (Road Only)')
+    ax2.set_title("Shadow: Isolated Road Impacts (Butterworth High-Pass >12Hz)")
+    ax2.set_xlabel("Time (s)")
+    ax2.set_ylabel("Acceleration (m/s²)")
+    ax2.legend()
+
     plt.tight_layout()
-    plt.savefig('impact_analysis.png') # Saves as a high-res image for your GitHub
+    
+    # Save for the GitHub README
+    plt.savefig('impact_analysis.png')
+    print("✅ Visualization saved as 'impact_analysis.png'")
+    
+    # Show the plot window
     plt.show()
 
 if __name__ == "__main__":
-    # Replace with your actual filename after your ride
-    # plot_impact_analysis('data/pothole_events.csv')
-    print("Visualization Engine Ready. Run with a CSV file to generate plots.")
+    if len(sys.argv) > 1:
+        run_visualization(sys.argv[1])
+    else:
+        print("Usage: python visualise.py <path_to_csv>")
