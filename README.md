@@ -36,13 +36,17 @@ PotholeNet/
 ## 🛠️ Installation & Usage
 ```bash
 # Clone the repository
-git clone https://github.com/medhansh5/PotholeNet.git
+git clone https://github.com/medhansh5/PotholeNet.git && cd PotholeNet
 
-# Install dependencies
+# Create a virtual environment and install dependencies
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# Run the program
-python potholenet.py
+# Validate the synthetic data integrity
+python3 scripts/data_validator.py
 
-# Run visualization to see the filtered signal
-python visualize.py
+# Train the model and generate the .pkl file
+python3 scripts/train_model.py
+
+# Generate the Signal Analysis plot (Raw vs Filtered)
+python3 visualize.py
