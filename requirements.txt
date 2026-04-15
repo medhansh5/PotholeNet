@@ -1,0 +1,13 @@
+# Data Manipulation & Math
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Signal Processing & ML
+scipy>=1.10.0
+scikit-learn>=1.2.0
+
+# Model Deployment
+joblib>=1.2.0
+
+#Visualization
+matplotlib>=3.7.0
