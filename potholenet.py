@@ -8,33 +8,25 @@ import joblib
 import os
 import requests
 import json
+import time
 
-# Replace with your Render/Railway URL once deployed
-API_URL = "https://shadowmap-api.onrender.com/upload" 
-
-def upload_road_data(lat, lng, quality_score):
-    """
-    Sends classified road data to ShadowMap API.
-    quality_score: 0 (Smooth), 1 (Bumpy), 2 (Pothole)
-    """
-    payload = {
-        "lat": lat,
-        "lng": lng,
-        "quality": int(quality_score)
-    }
+def upload_with_wakeup(lat, lng, quality):
+    API_URL = "https://shadowmap-api.onrender.com/upload"
+    payload = {"lat": lat, "lng": lng, "quality": int(quality)}
     
+    # Render Free Tier takes ~50s to spin up. 
+    # We use a 60s timeout for the "Wake-up" attempt.
     try:
-        response = requests.post(
-            API_URL, 
-            json=payload, 
-            timeout=5 # Don't let a bad signal hang your script
-        )
+        print("Sending data (Waiting for server to wake up...)")
+        response = requests.post(API_URL, json=payload, timeout=60)
         if response.status_code == 201:
-            print(f"Successfully uploaded: {quality_score} at {lat}, {lng}")
-        else:
-            print(f"Failed to upload: {response.status_code}")
-    except requests.exceptions.RequestException as e:
-        print(f"Network error: {e}")
+            print("Server is awake! Data uploaded.")
+            return True
+    except requests.exceptions.ReadTimeout:
+        print("Server wake-up timed out. Retrying on next bump...")
+    except Exception as e:
+        print(f"Connection error: {e}")
+    return False
 
 class PotholeNet:
     """
