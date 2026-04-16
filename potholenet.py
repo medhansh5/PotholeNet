@@ -10,7 +10,7 @@ import requests
 import json
 
 # Replace with your Render/Railway URL once deployed
-API_URL = "https://shadowmap-api.onrender.com" 
+API_URL = "https://shadowmap-api.onrender.com/upload" 
 
 def upload_road_data(lat, lng, quality_score):
     """
