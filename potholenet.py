@@ -6,6 +6,35 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
 import os
+import requests
+import json
+
+# Replace with your Render/Railway URL once deployed
+API_URL = "https://shadowmap-api.onrender.com" 
+
+def upload_road_data(lat, lng, quality_score):
+    """
+    Sends classified road data to ShadowMap API.
+    quality_score: 0 (Smooth), 1 (Bumpy), 2 (Pothole)
+    """
+    payload = {
+        "lat": lat,
+        "lng": lng,
+        "quality": int(quality_score)
+    }
+    
+    try:
+        response = requests.post(
+            API_URL, 
+            json=payload, 
+            timeout=5 # Don't let a bad signal hang your script
+        )
+        if response.status_code == 201:
+            print(f"Successfully uploaded: {quality_score} at {lat}, {lng}")
+        else:
+            print(f"Failed to upload: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"Network error: {e}")
 
 class PotholeNet:
     """
