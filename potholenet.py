@@ -12,8 +12,12 @@ import time
 
 def upload_with_wakeup(lat, lng, quality):
     API_URL = "https://shadowmap-api.onrender.com/upload"
-    payload = {"lat": lat, "lng": lng, "quality": int(quality)}
-    
+    # Round to 5 decimal places (~1.1 meter precision)
+    payload = {
+        "lat": round(float(lat), 5),
+        "lng": round(float(lng), 5),
+        "quality": int(quality_score)
+    }
     # Render Free Tier takes ~50s to spin up. 
     # We use a 60s timeout for the "Wake-up" attempt.
     try:
