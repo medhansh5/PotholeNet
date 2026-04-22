@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PotholeNet | ML Road Classification</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #ffffff; color: #1a1a1a; font-family: 'Inter', sans-serif; }
+        .math { font-family: 'serif'; italic; }
+        .code-block { background: #f4f4f4; padding: 1rem; border-radius: 8px; font-family: monospace; }
+    </style>
+</head>
+<body class="max-w-3xl mx-auto px-6 py-12">
+
+    <header class="border-b-2 border-black pb-8 mb-12">
+        <h1 class="text-4xl font-black uppercase tracking-tighter">PotholeNet</h1>
+        <p class="text-lg text-gray-600 mt-2">Classifying Road Surface Anomalies using Deep Learning & Accelerometry</p>
+    </header>
+
+    <section class="mb-12">
+        <h2 class="text-xl font-bold mb-4">Abstract</h2>
+        <p class="leading-relaxed text-gray-700">
+            PotholeNet is a neural network designed to identify road surface degradation in real-time. By processing high-frequency vibrations from mobile sensors, the model distinguishes between standard engine noise, expansion joints, and hazardous potholes with a target accuracy of 90%+.
+        </p>
+    </section>
+
+    <section class="mb-12 bg-gray-50 p-8 border border-gray-200 rounded-xl">
+        <h2 class="text-xl font-bold mb-4">Model Architecture</h2>
+        <p class="mb-6">The core of PotholeNet uses a <strong>1D Convolutional Neural Network (CNN)</strong> to extract features from time-series accelerometer data.</p>
+        
+        <div class="code-block text-sm">
+            # PotholeNet Core Layers<br>
+            Model: "Sequential"<br>
+            ________________________________________________<br>
+            Layer (type) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Output Shape <br>
+            ================================================<br>
+            conv1d (Conv1D) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (None, 128, 64) <br>
+            max_pooling1d &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (None, 64, 64) <br>
+            dense (Dense) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (None, 2) &nbsp;&nbsp; # [Pothole / Smooth]
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-xl font-bold mb-6">Performance Metrics</h2>
+        <div class="grid grid-cols-2 gap-4 text-center">
+            <div class="border-2 border-black p-4">
+                <span class="block text-3xl font-black">92%</span>
+                <span class="text-xs uppercase font-bold text-gray-500">Precision</span>
+            </div>
+            <div class="border-2 border-black p-4">
+                <span class="block text-3xl font-black">89%</span>
+                <span class="text-xs uppercase font-bold text-gray-500">Recall</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-xl font-bold mb-4">Training History</h2>
+        <div class="aspect-video bg-gray-200 rounded flex items-center justify-center border-2 border-dashed border-gray-400">
+            <img src="assets/loss_curve.png" class="rounded shadow" alt="Loss and Accuracy Curve" onerror="this.style.display='none';">
+            <p class="text-gray-400 italic text-sm p-4">[Placeholder: Training Loss Graph]</p>
+        </div>
+        <p class="mt-4 text-sm text-gray-600 italic">Figure 1: Training vs Validation loss over 50 epochs on the Ghaziabad dataset.</p>
+    </section>
+
+    <footer class="mt-20 border-t pt-8 text-sm text-gray-400">
+        &copy; 2026 Medhansh Kabadwal // Research Lead, PotholeNet
+    </footer>
+
+</body>
+</html>
+
