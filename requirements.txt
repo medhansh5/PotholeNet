@@ -9,5 +9,18 @@ scikit-learn>=1.2.0
 # Model Deployment
 joblib>=1.2.0
 
+# HTTP Requests (for API integration)
+requests>=2.28.0
+
+# Flask Web Framework
+Flask>=2.3.0
+Flask-SQLAlchemy>=3.0.0
+
+# Web Server
+websockets>=11.0.0
+
 #Visualization
 matplotlib>=3.7.0
+
+# Testing (optional)
+unittest>=1.0
