@@ -1,0 +1,237 @@
+# PotholeNet v2.2 - Deployment Configuration
+# Spatial Aggregation System for Production Deployment
+
+version: "2.2"
+name: "PotholeNet Spatial Aggregation"
+description: "Road quality visualization platform with DBSCAN clustering and PostGIS integration"
+
+# Database Configuration
+database:
+  type: "postgresql"
+  extension: "postgis"
+  host: "${DB_HOST:localhost}"
+  port: "${DB_PORT:5432}"
+  name: "${DB_NAME:potholenet}"
+  user: "${DB_USER:postgres}"
+  password: "${DB_PASSWORD}"
+  ssl_mode: "require"
+  connection_pool_size: 20
+  max_connections: 100
+
+# Clustering Configuration
+clustering:
+  algorithm: "DBSCAN"
+  eps_meters: 5.0
+  min_samples: 3
+  batch_size: 1000
+  processing_interval_seconds: 30
+  background_worker: true
+  
+  # Performance tuning
+  memory_limit_mb: 512
+  cpu_limit_cores: 2
+  max_processing_time_seconds: 120
+
+# API Configuration
+api:
+  version: "v2"
+  host: "0.0.0.0"
+  port: 5001
+  debug: false
+  cors_origins:
+    - "https://medhansh5.github.io"
+    - "https://shadowmap-api.onrender.com"
+  rate_limiting:
+    requests_per_minute: 100
+    burst_size: 20
+
+# Endpoints
+endpoints:
+  clusters: "/v2/map/clusters"
+  health_score: "/v2/health/score"
+  clustering_stats: "/v2/clustering/stats"
+  api_status: "/v2/status"
+  
+  # Response formats
+  default_format: "geojson"
+  supported_formats:
+    - "geojson"
+    - "json"
+
+# Spatial Configuration
+spatial:
+  coordinate_system: "WGS84"
+  srid: 4326
+  distance_calculation: "haversine"
+  earth_radius_meters: 6371000
+  
+  # Bounding boxes for major areas
+  default_zones:
+    ghaziabad_central:
+      bounds: [28.6000, 77.4000, 28.7000, 77.5000]
+      name: "Ghaziabad Central"
+    ghaziabad_north:
+      bounds: [28.7000, 77.4000, 28.8000, 77.5000]
+      name: "Ghaziabad North"
+    ghaziabad_south:
+      bounds: [28.5000, 77.4000, 28.6000, 77.5000]
+      name: "Ghaziabad South"
+    ghaziabad_east:
+      bounds: [28.6000, 77.5000, 28.7000, 77.6000]
+      name: "Ghaziabad East"
+    ghaziabad_west:
+      bounds: [28.6000, 77.3000, 28.7000, 77.4000]
+      name: "Ghaziabad West"
+
+# Road Health Scoring
+road_health:
+  score_range: [0, 100]
+  perfect_score: 100
+  
+  # Impact calculation weights
+  weights:
+    intensity: 0.6
+    density: 0.3
+    spatial: 0.1
+  
+  # Severity thresholds
+  severity_thresholds:
+    high:
+      min_combined_score: 8.0
+      color: "#FF0000"
+      radius_multiplier: 1.2
+    medium:
+      min_combined_score: 5.0
+      color: "#FFA500"
+      radius_multiplier: 1.0
+    low:
+      min_combined_score: 0.0
+      color: "#FFD700"
+      radius_multiplier: 0.8
+
+# Background Processing
+background_worker:
+  enabled: true
+  process_name: "potholenet-clustering"
+  log_level: "INFO"
+  log_file: "/var/log/potholenet/clustering.log"
+  
+  # Restart configuration
+  max_restarts: 10
+  restart_delay_seconds: 30
+  health_check_interval: 60
+
+# Monitoring
+monitoring:
+  metrics:
+    - "clustering_latency_seconds"
+    - "events_per_minute"
+    - "database_connection_pool"
+    - "memory_usage_mb"
+    - "cpu_usage_percent"
+  
+  alerts:
+    high_error_rate:
+      threshold: 0.05  # 5% error rate
+      window_minutes: 10
+    processing_lag:
+      threshold_seconds: 300  # 5 minutes
+    database_connection_failure:
+      threshold_consecutive_failures: 3
+
+# Security
+security:
+  authentication:
+    enabled: false
+    api_key_required: false
+  
+  input_validation:
+    max_bounds_size: 1000  # Maximum bounding box size
+    max_time_range_days: 365  # Maximum time range for queries
+  
+  rate_limiting:
+    enabled: true
+    algorithm: "token_bucket"
+    bucket_size: 100
+    refill_rate: 100  # tokens per minute
+
+# Performance Optimization
+performance:
+  database:
+    # Indexes for spatial queries
+    spatial_indexes:
+      - "idx_raw_telemetry_geom"
+      - "idx_road_events_center_geom"
+      - "idx_road_events_cluster_geom"
+      - "idx_health_zones_geom"
+    
+    # Query optimization
+    query_timeout_seconds: 30
+    connection_timeout_seconds: 10
+    
+    # Caching
+    result_cache_ttl_seconds: 300
+    health_score_cache_ttl_seconds: 600
+
+  clustering:
+    # Batch processing
+    max_points_per_batch: 10000
+    distance_matrix_chunk_size: 1000
+    
+    # Memory management
+    preallocate_distance_matrix: true
+    use_numpy_optimizations: true
+
+# Development/Testing
+development:
+  test_data:
+    enabled: true
+    sample_points: 50
+    eps_variants: [3.0, 5.0, 10.0]
+    min_samples_variants: [2, 3, 5]
+  
+  debugging:
+    log_sql_queries: false
+    profile_clustering: false
+    export_intermediate_results: false
+
+# Production Deployment
+production:
+  deployment_method: "systemd"
+  service_name: "potholenet-clustering"
+  user: "potholenet"
+  working_directory: "/opt/potholenet"
+  
+  # Environment variables
+  required_env_vars:
+    - "DB_HOST"
+    - "DB_NAME"
+    - "DB_USER"
+    - "DB_PASSWORD"
+    - "DB_PORT"
+  
+  optional_env_vars:
+    - "CLUSTER_EPS_METERS"
+    - "CLUSTER_MIN_SAMPLES"
+    - "CLUSTER_BATCH_SIZE"
+    - "CLUSTER_INTERVAL_SECONDS"
+
+# Migration Information
+migration:
+  current_version: "2.2"
+  previous_version: "2.1"
+  migration_scripts:
+    - "database_migration_v2.2.sql"
+  
+  # Breaking changes
+  breaking_changes:
+    - "Raw telemetry points now require clustering flag"
+    - "New road_events table replaces individual pin storage"
+    - "API endpoints moved to /v2/ namespace"
+
+# Documentation
+documentation:
+  api_docs: "/docs/api/v2"
+  deployment_guide: "/docs/deployment"
+  clustering_algorithm: "/docs/clustering"
+  database_schema: "/docs/database"

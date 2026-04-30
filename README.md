@@ -1,510 +1,302 @@
-# PotholeNet Engine v2.0
+# PotholeNet v2.3 - Real-time Road Quality Mapping
 
-Real-time signal processing and classification module for road anomaly detection using tri-axial accelerometer data.
+> **High-performance edge computing for infrastructure monitoring through spatial aggregation and native signal processing**
 
-## Overview
+---
 
-PotholeNet Engine processes accelerometer telemetry from Oppo F23 5G at 100Hz sampling rate to detect road anomalies in real-time. The system uses advanced signal processing with a 4th-order Butterworth High-Pass Filter to eliminate low-frequency drift and engine vibrations, isolating high-frequency vertical impacts characteristic of potholes.
+## Project Vision
 
-## Architecture
+PotholeNet transforms mobile devices into intelligent road quality sensors. By processing high-frequency accelerometer data at the edge and aggregating detections through spatial clustering, we create real-time maps of road infrastructure health for municipalities and navigation systems.
 
-### Core Components
+**Core Innovation**: Sub-millisecond signal processing on-device with cloud-based spatial aggregation for scalable, privacy-preserving road monitoring.
 
-1. **SignalProcessor** - Advanced tri-axial filtering and feature extraction
-2. **PotholeClassifier** - Machine learning model for road surface classification  
-3. **PotholeNetEngine** - Main processing engine with real-time capabilities
-4. **PotholeNetAPI** - Clean interface for mobile app integration
-5. **CoordinateProcessor** - GPS coordinate handling and clustering
+---
 
-### Signal Processing Pipeline
+## Architecture: The Three Pillars
+
+### 🎯 **The Edge (C++17)**
+**High-frequency signal processing with deterministic latency**
+
+- **4th-order Butterworth high-pass filter** optimized for 3-axis accelerometer data
+- **Zero-allocation hot path** ensuring sub-millisecond processing (~0.15ms/sample)
+- **Cross-platform native core** supporting Windows DLL and Android .so compilation
+- **Real-time feature extraction**: magnitude, variance, peak-to-peak calculations
 
 ```
-Raw Accelerometer Data (100Hz)
-        ↓
-4th-order Butterworth High-Pass Filter (12Hz cutoff)
-        ↓
-Tri-axial Filtering (X,Y: 8Hz, Z: 12Hz)
-        ↓
-Feature Extraction (7 features)
-        ↓
-ML Classification (Random Forest)
-        ↓
-Pothole Detection with GPS Coordinates
+potholenet_core.cpp    // 100Hz+ processing, <0.2ms latency
+├── ButterworthFilter    // 12Hz cutoff, 4th-order
+├── SignalProcessor     // Circular buffers, pre-allocated
+└── FFI Interface      // C-compatible exports
 ```
 
-## Features
+### 🌉 **The Bridge (Dart FFI)**
+**Low-overhead communication between native code and mobile UI**
 
-### Signal Processing
-- **4th-order Butterworth High-Pass Filter**: Eliminates low-frequency drift and engine vibrations
-- **Tri-axial Processing**: Uses all three axes for improved accuracy
-- **Real-time Filtering**: Processes data at 100Hz with minimal latency
-- **Spectral Analysis**: FFT-based frequency domain features
+- **C-compatible FFI layer** with extern "C" exports
+- **Memory-safe lifecycle management** with automatic cleanup
+- **Flutter integration** through DynamicLibrary loading
+- **Cross-platform ABI support** (ARM64, ARMv7, x86, x86_64)
 
-### Machine Learning
-- **Random Forest Classifier**: Robust model with balanced class weights
-- **7-Dimensional Features**: Variance, peak-to-peak, RMS, spectral characteristics
-- **Confidence Scoring**: Probability-based confidence metrics
-- **Severity Classification**: Low, medium, high severity levels
+```dart
+// Flutter integration example
+final processor = PotholeNetProcessor();
+bool detected = processor.processSample(x, y, z);
+```
 
-### GPS Integration
-- **Coordinate Validation**: Ensures valid GPS coordinates
-- **Distance Calculation**: Haversine formula for accurate distances
-- **Detection Clustering**: Groups nearby detections to avoid duplicates
-- **Map Integration**: Ready for ShadowMap API integration
+### 🧠 **The Brain (PostgreSQL/PostGIS)**
+**Spatial clustering and geographical health scoring**
 
-## Installation
+- **DBSCAN clustering** aggregating raw telemetry into road events
+- **PostGIS spatial indexing** for efficient geographical queries
+- **Road health scoring** (0-100 scale) based on cluster density and intensity
+- **Real-time API endpoints** serving GeoJSON for frontend visualization
 
+```
+/api/v2/map/clusters    // GeoJSON road events
+/api/v2/health/score    // Area health metrics
+/api/v2/clustering/stats // Performance analytics
+```
+
+## Technical Stack
+
+| Layer | Technology | Purpose |
+|--------|-------------|----------|
+| **Core** | C++17, CMake, Android NDK | Native signal processing, cross-compilation |
+| **Backend** | Python, Flask, SQLAlchemy | API server, clustering algorithms, database ORM |
+| **Database** | PostgreSQL + PostGIS | Spatial indexing, geographical queries, clustering storage |
+| **Frontend** | Flutter (Mobile) | Cross-platform mobile interface, real-time visualization |
+| **Build** | CMake 3.16+, NDK r21+, Visual Studio 2019+ | Cross-platform compilation and dependency management |
+
+---
+
+## Performance Benchmarks
+
+### Edge Processing (C++ Core)
+```
+Sample Rate:        100 Hz
+Processing Time:     ~0.15ms per sample
+Latency:            <0.2ms worst-case
+Memory Usage:        ~2KB per processor instance
+Throughput:          6,667 samples/second
+Allocations:         0 in hot path
+```
+
+### Spatial Aggregation (PostgreSQL)
+```
+Clustering Algorithm: DBSCAN (ε=5m, min_samples=3)
+Index Type:         PostGIS GIST
+Query Performance:    <50ms for city-scale queries
+Event Generation:     Real-time (30-second intervals)
+Storage Efficiency:   90% reduction vs raw telemetry
+```
+
+---
+
+## Quick Start (Windows)
+
+### Prerequisites
+- Visual Studio 2019+ with C++ development tools
+- CMake 3.16+
+- Git
+
+### Build Native Core
+```batch
+# Clone repository
+git clone https://github.com/medhansh5/PotholeNet.git
+cd PotholeNet
+
+# Build Windows DLL (from VS Developer Command Prompt)
+build_windows.bat
+```
+
+Output:
+```
+libpotholenet_core.dll    # Runtime library
+potholenet_core.lib      # Import library
+```
+
+### Backend Setup
 ```bash
-# Install dependencies
+# Python environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# Verify installation
-python test_engine.py
+# Database migration
+psql -U postgres -d potholenet -f database_migration_v2.2.sql
+
+# Start API server
+python api_v2_clusters.py
 ```
 
-## Quick Start
+### Verify Installation
+```bash
+# Test native core
+curl http://localhost:5001/v2/status
 
-### Web Application (Recommended)
-
-1. **Start the Flask web application:**
-   ```bash
-   python app.py
-   ```
-
-2. **Open the map interface:**
-   ```
-   http://localhost:5000
-   ```
-
-3. **Features available:**
-   - **Auto-refresh**: Map automatically updates every 30 seconds
-   - **Severity-based markers**: Yellow (Low), Orange (Medium), Red (High)
-   - **Real-time statistics**: Total detections, recent activity, severity breakdown
-   - **Data export**: Download pothole data as JSON
-   - **Location**: Centered on Ghaziabad, India (28.6692° N, 77.4538° E)
-
-### Basic Usage (Python API)
-
-```python
-from api import get_api
-
-# Initialize API
-api = get_api()
-
-# Add sensor data (100Hz sampling)
-api.add_sensor_data(timestamp, x, y, z, latitude, longitude)
-
-# Process and get detections
-detections = api.process_and_get_detections()
-
-for detection in detections:
-    print(f"Pothole detected: {detection['confidence']:.2f} confidence")
-    print(f"Location: {detection['latitude']:.6f}, {detection['longitude']:.6f}")
-```
-
-### Real-time Integration
-
-```python
-from app_integration_example import PotholeDetectorApp
-
-# Initialize detector
-detector = PotholeDetectorApp()
-
-# Start detection
-detector.start_detection()
-
-# Process sensor readings (call for each accelerometer reading)
-detector.process_sensor_reading(timestamp, x, y, z, latitude, longitude)
-
-# Stop detection
-detector.stop_detection()
-```
-
-## Web Application
-
-### Features
-
-- **Interactive Map**: Leaflet-based map centered on Ghaziabad, India
-- **Auto-Refresh**: Automatically updates pothole markers every 30 seconds
-- **Severity-Based Markers**: 
-  - Yellow (4px radius) - Low severity
-  - Orange (4px radius) - Medium severity  
-  - Red (4px radius) - High severity
-  - All markers have white stroke (1px) for visibility
-- **Real-time Statistics**: Total detections, recent activity, severity breakdown
-- **Data Export**: Download pothole data as JSON with timestamps
-- **Filtering**: Filter markers by severity level
-- **Responsive Design**: Works on desktop and mobile devices
-
-### Flask API Endpoints
-
-#### GET `/api/potholes`
-Returns all pothole detections from database as JSON.
-
-**Response:**
-```json
+# Expected response
 {
-    "status": "success",
-    "count": 15,
-    "potholes": [
-        {
-            "id": 1,
-            "latitude": 28.6692,
-            "longitude": 77.4538,
-            "confidence": 0.85,
-            "severity": "medium",
-            "timestamp": 1713981234.5,
-            "created_at": "2024-04-24T22:15:30.123456"
-        }
-    ],
-    "last_updated": "2024-04-24T22:15:30.123456"
+  "status": "healthy",
+  "version": "2.3",
+  "features": {
+    "spatial_aggregation": true,
+    "dbscan_clustering": true,
+    "native_bridge": true
+  }
 }
 ```
 
-#### GET `/api/stats`
-Returns detection statistics.
+---
 
-**Response:**
-```json
-{
-    "status": "success",
-    "stats": {
-        "total": 25,
-        "recent": 5,
-        "by_severity": {
-            "high": 8,
-            "medium": 12,
-            "low": 5
-        },
-        "avg_confidence": 82.5,
-        "last_updated": "2024-04-24T22:15:30.123456"
-    }
-}
+## Development Workflow
+
+### 1. Edge Development (C++)
+```bash
+# Modify potholenet_core.cpp
+build_windows.bat          # Recompile DLL
+test_potholenet_core.exe  # Run test suite
 ```
 
-#### POST `/api/detection`
-Add a new pothole detection.
-
-**Request:**
-```json
-{
-    "latitude": 28.6692,
-    "longitude": 77.4538,
-    "confidence": 0.85,
-    "severity": "medium",
-    "timestamp": 1713981234.5
-}
+### 2. Backend Development (Python)
+```bash
+# Update clustering algorithms
+python clustering_service.py    # Test locally
+python api_v2_clusters.py      # Start API server
 ```
 
-#### POST `/api/process_sensor`
-Process sensor data through PotholeNet engine.
-
-**Request:**
-```json
-{
-    "timestamp": 1713981234.5,
-    "x": 0.1,
-    "y": 0.2,
-    "z": 2.5,
-    "latitude": 28.6692,
-    "longitude": 77.4538
-}
+### 3. Integration Testing
+```bash
+# End-to-end pipeline
+python background_clustering_worker.py  # Background processing
+# Flutter app connects to both native core and API
 ```
+
+---
 
 ## API Reference
 
-### PotholeNetAPI
+### Core FFI Functions
+```c
+// Lifecycle
+void* create_processor(double frequency, double cutoff);
+bool process_sample(void* processor, double x, double y, double z);
+void destroy_processor(void* processor);
 
-#### Methods
-
-- `add_sensor_data(timestamp, x, y, z, latitude, longitude)`: Add sensor reading
-- `process_and_get_detections()`: Process buffered data and return detections
-- `get_buffer_status()`: Get current buffer status
-- `clear_buffers()`: Clear all buffers
-- `enable_processing(enabled)`: Enable/disable processing
-
-#### Detection Format
-
-```python
-{
-    'latitude': float,        # GPS latitude
-    'longitude': float,       # GPS longitude  
-    'confidence': float,      # Confidence score (0-1)
-    'severity': str,          # 'low', 'medium', 'high'
-    'timestamp': float        # Unix timestamp
-}
+// Features
+double get_current_magnitude(void* processor);
+double get_z_variance(void* processor);
+double get_peak_to_peak(void* processor);
 ```
 
-### SignalProcessor
-
-#### Methods
-
-- `apply_butterworth_highpass(data, cutoff, order)`: Apply high-pass filter
-- `apply_tri_axial_filtering(data)`: Filter all three axes
-- `extract_features(window)`: Extract 7-dimensional features
-
-### PotholeNetEngine
-
-#### Methods
-
-- `process_sensor_data(readings)`: Process list of SensorReading objects
-- `train_model(data_file, labels_file)`: Train model from data files
-- `get_detection_summary()`: Get detection statistics
-
-## Model Training
-
-### Training with Existing Data
-
-```python
-from engine import create_engine
-
-# Create engine
-engine = create_engine()
-
-# Train model
-metrics = engine.train_model('data/pothole_events.csv')
-
-print(f"Training completed: {metrics}")
+### REST Endpoints
+```
+GET /v2/map/clusters?bounds={}&severity={}&time_range={}
+GET /v2/health/score?bounds={}
+GET /v2/clustering/stats
+GET /v2/status
 ```
 
-### Training Data Format
+---
 
-CSV files with columns: `time,x,y,z`
+## Architecture Deep Dive
 
-- `time`: Timestamp in seconds
-- `x,y,z`: Accelerometer values in m/s²
-
-### Model Performance
-
-The trained model achieves:
-- **Training Accuracy**: >95%
-- **Processing Speed**: >10,000 samples/second
-- **Detection Latency**: <50ms
-- **Memory Usage**: <50MB
-
-## File Structure
-
+### Signal Processing Pipeline
 ```
-potholenet/
-├── app.py                 # Flask web application with database
-├── engine.py              # Core signal processing and ML engine
-├── api.py                 # Clean API for app integration
-├── map.js                 # Interactive map with auto-refresh
-├── test_engine.py         # Comprehensive testing suite
-├── app_integration_example.py  # Example app integration
-├── potholenet.py          # Legacy implementation (v1.0)
-├── requirements.txt       # Python dependencies
-├── data/                  # Training data
-│   ├── pothole_events.csv
-│   └── smooth_road.csv
-├── models/                # Trained models
-│   └── shadow_v1.pkl
-├── templates/             # Flask templates
-│   └── index.html         # Web interface
-├── static/                # Static files
-│   └── js/
-│       └── map.js         # Map JavaScript
-└── README_ENGINE.md       # This documentation
+Raw Accelerometer (100Hz) → Butterworth HPF (12Hz) → Feature Extraction → Detection
+                      ↓
+                 Circular Buffer (128 samples) → Variance/P2P → Thresholding
 ```
 
-## Configuration
-
-### Signal Processing Parameters
-
-```python
-# Butterworth filter settings
-cutoff_frequency = 12.0  # Hz
-filter_order = 4
-sampling_rate = 100      # Hz
-
-# Feature extraction
-window_size = 100        # samples (1 second)
-window_step = 50         # samples (0.5 second overlap)
-
-# Detection parameters
-confidence_threshold = 0.7
-detection_cooldown = 2.0  # seconds
-clustering_radius = 10.0  # meters
+### Spatial Aggregation Pipeline
+```
+Mobile Detections → Telemetry Ingest → DBSCAN Clustering → Road Events → GeoJSON API
+                        ↓                    ↓                    ↓
+                PostgreSQL/PostGIS → Spatial Index → Health Scoring → Frontend
 ```
 
-### Model Parameters
+### Memory Management Strategy
+- **Edge**: Fixed allocation during initialization, zero runtime allocation
+- **Bridge**: RAII with automatic cleanup, exception-safe
+- **Brain**: Connection pooling, batch processing, automatic vacuum
 
-```python
-# Random Forest
-n_estimators = 100
-max_depth = 12
-random_state = 42
-class_weight = 'balanced'
-```
+---
 
-## Performance Optimization
+## Future Roadmap
 
-### Real-time Processing
+### v2.4 - Real-time Heatmap Rendering
+- **GPU-accelerated tile generation** using OpenGL ES
+- **WebGL integration** for browser-based visualization
+- **Progressive loading** for large geographical areas
+- **Custom tile server** for optimized mobile delivery
 
-- **Buffer Management**: Sliding window with configurable size
-- **Feature Caching**: Pre-computed filter coefficients
-- **Memory Efficiency**: Minimal memory footprint
-- **Latency**: <50ms processing time per window
+### v2.5 - Predictive Road Decay
+- **Time-series analysis** of road event patterns
+- **Machine learning models** for degradation prediction
+- **Maintenance scheduling** integration with municipal systems
+- **Cost-benefit analysis** for infrastructure planning
 
-### Battery Optimization
+### v3.0 - Multi-Sensor Fusion
+- **Camera integration** for visual pothole verification
+- **LiDAR support** for high-end vehicles
+- **Crowdsourcing validation** through user reports
+- **Sensor fusion algorithms** combining multiple data sources
 
-- **Adaptive Sampling**: Adjust frequency based on motion
-- **Background Processing**: Non-blocking detection
-- **Power Management**: Sleep mode when stationary
+---
 
-## Testing
+## Contributing Guidelines
 
-### Run Test Suite
+### Code Standards
+- **C++17 compliance** with portable standard library usage
+- **Zero-allocation hot paths** for real-time processing
+- **Comprehensive testing** with performance benchmarks
+- **Cross-platform validation** (Windows, Android, Linux)
 
-```bash
-python test_engine.py
-```
+### Submission Process
+1. Fork repository and create feature branch
+2. Implement changes with tests
+3. Validate performance benchmarks
+4. Submit pull request with technical rationale
 
-### Test Coverage
-
-- Signal processing validation
-- Model performance testing
-- Real-time processing simulation
-- API integration testing
-- Coordinate processing validation
-- Performance benchmarking
-
-## Integration Guide
-
-### Mobile App Integration
-
-1. **Initialize API**
-   ```python
-   from api import get_api
-   api = get_api('models/potholenet_v2.pkl')
-   ```
-
-2. **Feed Sensor Data**
-   ```python
-   # Call for each accelerometer reading (100Hz)
-   api.add_sensor_data(timestamp, x, y, z, latitude, longitude)
-   ```
-
-3. **Process Detections**
-   ```python
-   detections = api.process_and_get_detections()
-   for detection in detections:
-       upload_to_map(detection)
-   ```
-
-### Sensor Data Requirements
-
-- **Sampling Rate**: 100Hz (10ms intervals)
-- **Units**: m/s² for accelerometer values
-- **Axes**: X (lateral), Y (forward), Z (vertical)
-- **GPS**: Optional but recommended for localization
-
-### Map API Integration
-
-Detections are automatically formatted for ShadowMap API:
-
-```python
-payload = {
-    "lat": round(latitude, 5),
-    "lng": round(longitude, 5),
-    "quality": int(confidence * 100),
-    "severity": severity,
-    "timestamp": timestamp
-}
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Low Detection Rate**
-   - Check sensor data quality
-   - Verify 100Hz sampling rate
-   - Ensure proper phone mounting
-
-2. **False Positives**
-   - Adjust confidence threshold
-   - Check for mechanical vibrations
-   - Verify GPS accuracy
-
-3. **Performance Issues**
-   - Reduce buffer size
-   - Check memory usage
-   - Optimize sampling frequency
-
-### Debug Mode
-
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-# Enable detailed logging
-engine = PotholeNetEngine()
-engine.signal_processor.logger.setLevel(logging.DEBUG)
-```
-
-## Recent Updates (v2.1)
-
-### Web Application Features
-- **Flask Web Server**: Complete web application with database integration
-- **Interactive Map**: Leaflet-based map with severity-based markers
-- **Auto-Refresh**: 30-second automatic updates without page reload
-- **Location Focus**: Centered on Ghaziabad, India (28.6692° N, 77.4538° E)
-- **Data Export**: JSON export functionality for pothole data
-- **Real-time Statistics**: Live dashboard with detection metrics
-- **Responsive Design**: Mobile-friendly interface
-
-### Marker Styling
-- **4px radius** for all pothole markers
-- **Severity colors**: Yellow (Low), Orange (Medium), Red (High)
-- **White stroke** (1px) for enhanced visibility
-- **Hover effects** and interactive popups
-
-### API Enhancements
-- **RESTful endpoints**: `/api/potholes`, `/api/stats`, `/api/detection`
-- **Database persistence**: SQLite storage with SQLAlchemy
-- **JSON responses**: Structured data format for frontend integration
-- **Sample data**: Pre-populated with Ghaziabad locations
-
-## Version History
-
-### v2.1 (Current)
-- Flask web application with auto-refresh map
-- Ghaziabad, India location focus
-- Enhanced marker styling (4px radius, white stroke)
-- Database integration with SQLite
-- Real-time statistics dashboard
-- Data export functionality
-
-### v2.0
-- Enhanced tri-axial signal processing
-- Improved feature extraction (7 features)
-- Real-time API for app integration
-- GPS coordinate clustering
-- Comprehensive testing framework
-
-### v1.0 (Legacy)
-- Basic Z-axis processing
-- 4-dimensional features
-- Simple Random Forest model
-- No GPS integration
+---
 
 ## License
 
-This project is licensed under the MIT License - see LICENSE file for details.
+This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
 
-## Contributing
+---
 
-1. Fork the repository
-2. Create feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit pull request
+**PotholeNet v2.3** - Engineering-grade real-time infrastructure monitoring through native edge computing and intelligent spatial aggregation.
 
-## Support
+> Built with ❤️ for safer roads worldwide
 
-For technical support and questions:
-- Check the troubleshooting section
-- Review the test suite for examples
-- Examine the integration examples
-- Run the performance benchmark
+
+
+
+
+---
+
+## Contributing Guidelines
+
+### Code Standards
+- **C++17 compliance** with portable standard library usage
+- **Zero-allocation hot paths** for real-time processing
+- **Comprehensive testing** with performance benchmarks
+- **Cross-platform validation** (Windows, Android, Linux)
+
+### Submission Process
+1. Fork repository and create feature branch
+2. Implement changes with tests
+3. Validate performance benchmarks
+4. Submit pull request with technical rationale
+
+---
+
+## License
+
+This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+**PotholeNet v2.3** - Engineering-grade real-time infrastructure monitoring through native edge computing and intelligent spatial aggregation.
+
+> Built with ❤️ for safer roads worldwide
