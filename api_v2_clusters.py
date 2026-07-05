@@ -1,11 +1,11 @@
 """
-PotholeNet v2.2 - Clusters API Endpoint
+PotholeNet v3.0 - Enterprise Clusters API Endpoint
 
 GET /v2/map/clusters endpoint returning GeoJSON formatted
 road event data for frontend rendering with spatial aggregation.
 """
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import json
@@ -90,7 +90,6 @@ class ClustersAPI:
                 if time_range:
                     time_condition = self._get_time_condition(time_range)
                     where_conditions.append(time_condition)
-                    params.append(datetime.utcnow())
                 
                 where_clause = " AND ".join(where_conditions) if where_conditions else "TRUE"
                 
@@ -157,6 +156,9 @@ class ClustersAPI:
         features = []
         
         for event in events:
+            if not event.get('geometry'):
+                continue
+                
             # Main feature (center point)
             center_feature = {
                 "type": "Feature",
@@ -323,8 +325,15 @@ class ClustersAPI:
         finally:
             conn.close()
 
-# Flask application for v2.2 API
+# Flask application for v3.0 API
 app = Flask(__name__)
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    return response
 
 # Database configuration (should be environment variables in production)
 DB_CONFIG = {

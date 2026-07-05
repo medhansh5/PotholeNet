@@ -1,8 +1,8 @@
-# PotholeNet v2.2 - Deployment Configuration
+# PotholeNet v3.0 - Deployment Configuration
 # Spatial Aggregation System for Production Deployment
 
-version: "2.2"
-name: "PotholeNet Spatial Aggregation"
+version: "3.0"
+name: "PotholeNet Enterprise Spatial Aggregation"
 description: "Road quality visualization platform with DBSCAN clustering and PostGIS integration"
 
 # Database Configuration
@@ -218,9 +218,10 @@ production:
 
 # Migration Information
 migration:
-  current_version: "2.2"
-  previous_version: "2.1"
+  current_version: "3.0"
+  previous_version: "2.2"
   migration_scripts:
+    - "database_migration_v3.0.sql"
     - "database_migration_v2.2.sql"
   
   # Breaking changes

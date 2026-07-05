@@ -1,8 +1,8 @@
 """
-PotholeNet v2.2 - Spatial Aggregation Service
+PotholeNet v3.0 - Enterprise Spatial Aggregation Service
 
-DBSCAN clustering implementation for aggregating raw telemetry points 
-into actionable "Road Events" with spatial accuracy and performance optimization.
+DBSCAN Ball Tree clustering implementation for aggregating raw telemetry points 
+into actionable "Road Events" with O(N log N) spatial accuracy and performance optimization.
 """
 
 import numpy as np
@@ -30,6 +30,7 @@ class TelemetryPoint:
     timestamp: float
     device_id: Optional[str] = None
     speed: Optional[float] = None
+    point_id: Optional[int] = None
 
 @dataclass
 class RoadEvent:
@@ -121,20 +122,19 @@ class DBSCANClusterer:
             logger.warning("Insufficient points for clustering")
             return []
         
-        # Extract coordinates for clustering
-        coords = [(point.latitude, point.longitude) for point in telemetry_data]
+        # Extract coordinates in radians for Ball Tree Haversine metric
+        coords = np.array([(point.latitude, point.longitude) for point in telemetry_data])
+        coords_rad = np.radians(coords)
         
-        # Calculate distance matrix using Haversine
-        distance_matrix = HaversineDistance.distance_matrix(coords)
-        
-        # Apply DBSCAN with precomputed distance matrix
+        # Apply O(N log N) Ball Tree DBSCAN with Earth radius scaling (6,371,000m)
         dbscan = DBSCAN(
-            eps=self.eps_meters,
+            eps=self.eps_meters / 6371000.0,
             min_samples=self.min_samples,
-            metric='precomputed'
+            metric='haversine',
+            algorithm='ball_tree'
         )
         
-        cluster_labels = dbscan.fit_predict(distance_matrix)
+        cluster_labels = dbscan.fit_predict(coords_rad)
         
         # Convert clusters to road events
         road_events = self._create_road_events(telemetry_data, cluster_labels)
@@ -167,9 +167,12 @@ class DBSCANClusterer:
     
     def _create_road_event(self, cluster_points: List[TelemetryPoint], cluster_id: int) -> RoadEvent:
         """Create a road event from clustered points"""
-        # Calculate center (weighted by Z-magnitude)
+        # Calculate center (weighted by Z-magnitude, with fallback for 0 sum)
         total_z = sum(point.z_magnitude for point in cluster_points)
-        weights = [point.z_magnitude / total_z for point in cluster_points]
+        if total_z > 0:
+            weights = [point.z_magnitude / total_z for point in cluster_points]
+        else:
+            weights = [1.0 / len(cluster_points)] * len(cluster_points)
         
         center_lat = sum(point.latitude * weight for point, weight in zip(cluster_points, weights))
         center_lng = sum(point.longitude * weight for point, weight in zip(cluster_points, weights))

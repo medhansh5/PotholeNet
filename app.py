@@ -1,5 +1,5 @@
 """
-PotholeNet Flask Application
+PotholeNet v3.0 Flask Application
 
 Web application for real-time pothole detection and mapping
 Integrates with PotholeNet Engine for signal processing and classification
@@ -21,6 +21,13 @@ from api import get_api, process_real_time_data
 from engine import SensorReading
 
 app = Flask(__name__)
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    return response
 
 # Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///potholes.db'
@@ -130,10 +137,10 @@ def get_stats():
         low_severity = PotholeDetection.query.filter_by(severity='low').count()
         
         # Calculate average confidence
-        avg_confidence = 0
+        avg_confidence = 0.0
         if total > 0:
             avg_result = db.session.query(db.func.avg(PotholeDetection.confidence)).scalar()
-            avg_confidence = avg_result if avg_result else 0
+            avg_confidence = float(avg_result) if avg_result is not None else 0.0
         
         stats = {
             'total': total,

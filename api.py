@@ -1,5 +1,5 @@
 """
-PotholeNet API - Clean interface for app.py integration
+PotholeNet v3.0 API - Clean interface for app.py integration
 
 Provides simplified API for mobile app to:
 1. Ingest raw accelerometer data from Oppo F23 5G
@@ -113,6 +113,7 @@ class PotholeNetAPI:
         """Clear all buffers"""
         self.sensor_buffer.clear()
         self.gps_buffer.clear()
+        self.engine.last_detection_time = 0
     
     def enable_processing(self, enabled: bool = True):
         """Enable or disable processing"""

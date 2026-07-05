@@ -1,5 +1,5 @@
 /**
- * PotholeNet v2.3 - Native Bridge Test Suite
+ * PotholeNet v3.0 - Native Bridge Test Suite
  * 
  * Comprehensive testing for the C++ signal processing library
  * Validates Butterworth filter performance and FFI interface
@@ -9,6 +9,10 @@
 #include <iostream>
 #include <chrono>
 #include <vector>
+#include <string>
+#include <functional>
+#include <stdexcept>
+#define _USE_MATH_DEFINES
 #include <cmath>
 #include <cassert>
 
@@ -318,7 +322,7 @@ void test_edge_cases() {
 }
 
 int main() {
-    std::cout << "PotholeNet v2.3 Native Bridge Test Suite" << std::endl;
+    std::cout << "PotholeNet v3.0 Native Bridge Test Suite" << std::endl;
     std::cout << "========================================" << std::endl;
     
     TestSuite suite;

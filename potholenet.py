@@ -16,7 +16,7 @@ def upload_with_wakeup(lat, lng, quality):
     payload = {
         "lat": round(float(lat), 5),
         "lng": round(float(lng), 5),
-        "quality": int(quality_score)
+        "quality": int(quality)
     }
     # Render Free Tier takes ~50s to spin up. 
     # We use a 60s timeout for the "Wake-up" attempt.
@@ -61,26 +61,52 @@ class PotholeNet:
         return filtfilt(b, a, data)
 
     def extract_features(self, window):
-        """Feature Engineering: RMS, Std Dev, and Peak Magnitude."""
-        # Check if the window is a DataFrame; if so, grab the 'z' column.
-        # Otherwise, assume it's already a slice of the z-axis data.
+        """Feature Engineering: 7-feature schema matching PotholeNet Engine v3.0."""
         if isinstance(window, pd.DataFrame):
             z_raw = window['z'].values
+            x_raw = window['x'].values if 'x' in window else np.zeros_like(z_raw)
+            y_raw = window['y'].values if 'y' in window else np.zeros_like(z_raw)
         else:
-            # If it's a numpy array, we assume column 3 (index 2) is Z
-            # (time=0, x=1, y=2, z=3)
-            z_raw = window[:, 3] if window.ndim > 1 else window
-            
-        z_filt = self._apply_butterworth_highpass(z_raw)
+            if isinstance(window, np.ndarray) and window.ndim > 1 and window.shape[1] >= 4:
+                x_raw = window[:, 1]
+                y_raw = window[:, 2]
+                z_raw = window[:, 3]
+            elif isinstance(window, np.ndarray) and window.ndim > 1 and window.shape[1] == 3:
+                x_raw = window[:, 0]
+                y_raw = window[:, 1]
+                z_raw = window[:, 2]
+            else:
+                z_raw = window if not isinstance(window, np.ndarray) or window.ndim == 1 else window[:, 0]
+                x_raw = np.zeros_like(z_raw)
+                y_raw = np.zeros_like(z_raw)
+                
+        z_filt = self._apply_butterworth_highpass(z_raw, cutoff=12, order=4)
+        x_filt = self._apply_butterworth_highpass(x_raw, cutoff=8, order=4) if np.any(x_raw) else x_raw
+        y_filt = self._apply_butterworth_highpass(y_raw, cutoff=8, order=4) if np.any(y_raw) else y_raw
         
-        return [
-            np.std(z_filt),
-            np.max(np.abs(z_filt)),
-            np.sqrt(np.mean(z_filt**2)),
-            np.ptp(z_filt)
-        ]
+        z_variance = np.var(z_filt)
+        z_ptp = np.ptp(z_filt)
+        z_rms = np.sqrt(np.mean(z_filt**2))
+        z_max_abs = np.max(np.abs(z_filt))
+        
+        xy_mag = np.sqrt(x_filt**2 + y_filt**2)
+        xy_rms = np.sqrt(np.mean(xy_mag**2))
+        
+        if len(z_filt) > 0:
+            fft = np.fft.fft(z_filt)
+            freqs = np.fft.fftfreq(len(z_filt), 1.0/self.fs)
+            power_spectrum = np.abs(fft)**2
+            high_freq_mask = (freqs >= 20) & (freqs <= 50)
+            high_freq_power = np.sum(power_spectrum[high_freq_mask])
+            power_sum = np.sum(power_spectrum[:len(freqs)//2])
+            spectral_centroid = np.sum(freqs[:len(freqs)//2] * power_spectrum[:len(freqs)//2]) / power_sum if power_sum > 0 else 0.0
+        else:
+            high_freq_power = 0.0
+            spectral_centroid = 0.0
+            
+        return [z_variance, z_ptp, z_rms, z_max_abs, xy_rms, high_freq_power, spectral_centroid]
 
-    def train_model(self, data_windows, labels):
+    def train_model(self, data_windows, labels, output_path='potholenet_v3.pkl'):
         """
         Trains the Random Forest model on labeled segments.
         Labels: 0 = Smooth Road, 1 = Pothole/Rough Road
@@ -97,8 +123,8 @@ class PotholeNet:
         print(classification_report(y_test, predictions))
         
         # Save the model for real-time edge deployment
-        joblib.dump(self.model, 'potholenet_v1.pkl')
-        print("Model saved as potholenet_v1.pkl")
+        joblib.dump(self.model, output_path)
+        print(f"Model saved as {output_path}")
 
     def run_inference(self, live_window):
         """
@@ -109,5 +135,5 @@ class PotholeNet:
         return "POTHOLE" if prediction[0] == 1 else "SMOOTH"
 
 if __name__ == "__main__":
-    print("PotholeNet Core Engine v1.0")
+    print("PotholeNet Core Engine v3.0")
     print("Waiting for data mission files from 'Shadow'...")

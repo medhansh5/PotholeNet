@@ -38,8 +38,8 @@ const severityColors = {
 
 // Initialize map when page loads
 function initMap() {
-    // Create map centered on default location (New York City)
-    map = L.map('map').setView([40.7128, -74.0060], 13);
+    // Create map centered on Ghaziabad, India (default location matching app.py sample data)
+    map = L.map('map').setView([28.6692, 77.4538], 13);
 
     // Add tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -91,8 +91,8 @@ function getUserLocation() {
             },
             (error) => {
                 console.warn('Could not get user location:', error);
-                // Use default location
-                map.setView([40.7128, -74.0060], 13);
+                // Use default location (Ghaziabad)
+                map.setView([28.6692, 77.4538], 13);
             }
         );
     }
@@ -163,6 +163,7 @@ function addPotholeDetection(detection) {
         }
     }
     
+    const severity = detection.severity || 'medium';
     console.log(`Added ${severity} severity pothole at ${detection.latitude}, ${detection.longitude}`);
 }
 

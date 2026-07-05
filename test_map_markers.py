@@ -7,6 +7,13 @@ Verifies that the Leaflet markers in map.js correctly use:
 - White stroke (1px)
 """
 
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 import json
 import time
 from api import get_api, process_real_time_data
@@ -105,13 +112,22 @@ def test_api_integration():
     print("\nTesting API Integration")
     print("=" * 40)
     
-    # Test with high severity pothole
-    detections = process_real_time_data(
-        timestamp=time.time(),
-        x=0.1, y=0.2, z=3.0,  # High Z value = high severity
-        latitude=40.7128,
-        longitude=-74.0060
-    )
+    # Test with high severity pothole (100 samples at 100Hz)
+    import numpy as np
+    api = get_api()
+    api.clear_buffers()
+    st = time.time()
+    detections = []
+    for i in range(100):
+        z_val = 10.0 * np.sin(2 * np.pi * 35 * (i * 0.01)) + 10.0 * np.exp(-((i - 60) / 5)**2) if 50 <= i < 70 else np.random.randn() * 0.1
+        res = process_real_time_data(
+            timestamp=st + i * 0.01,
+            x=np.random.randn() * 0.02, y=np.random.randn() * 0.02, z=z_val,
+            latitude=40.7128,
+            longitude=-74.0060
+        )
+        if res:
+            detections.extend(res)
     
     if detections:
         detection = detections[0]

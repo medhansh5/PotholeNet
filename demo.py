@@ -1,5 +1,5 @@
 """
-PotholeNet Engine Demo
+PotholeNet v3.0 Engine Demo
 
 Demonstrates the complete PotholeNet Engine functionality:
 1. Signal processing with 4th-order Butterworth filter
@@ -57,7 +57,7 @@ def demo_real_time_classification():
     print("\n=== Real-time Classification Demo ===")
     
     # Create API with trained model
-    api = get_api('models/potholenet_v2.pkl')
+    api = get_api('models/potholenet_v3.pkl')
     
     # Simulate real-time data stream
     print("Simulating 3 seconds of sensor data...")
@@ -231,7 +231,7 @@ def demo_visualization():
         print(f"Visualization error: {e}")
 
 if __name__ == "__main__":
-    print("PotholeNet Engine v2.0 - Complete Demo")
+    print("PotholeNet Engine v3.0 - Complete Demo")
     print("=" * 50)
     
     # Run all demos

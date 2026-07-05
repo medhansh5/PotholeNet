@@ -1,8 +1,8 @@
-# PotholeNet v2.3 - Native Bridge CMake Configuration
+# PotholeNet v3.0 - Native Bridge CMake Configuration
 # Cross-platform build system for Windows DLL and Android .so
 
 cmake_minimum_required(VERSION 3.16)
-project(PotholeNetCore VERSION 2.3.0 LANGUAGES CXX)
+project(PotholeNetCore VERSION 3.0.0 LANGUAGES CXX)
 
 # Set C++17 standard
 set(CMAKE_CXX_STANDARD 17)
@@ -31,7 +31,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     # Microsoft Visual C++ optimizations
     add_compile_options(/O2 /Ob2 /Ot)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-    add_compile_definitions(POTHOLENET_CORE_EXPORTS)
     
     # Enable high-performance floating point
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -45,9 +44,6 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     
     # Position-independent code for shared libraries
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-    
-    # Export symbols
-    add_compile_definitions(POTHOLENET_CORE_EXPORTS)
 endif()
 
 # Source files
@@ -70,11 +66,14 @@ set_target_properties(potholenet_core PROPERTIES
     PUBLIC_HEADER "${PUBLIC_HEADERS}"
 )
 
+# Set target compile definitions privately
+target_compile_definitions(potholenet_core PRIVATE POTHOLENET_CORE_EXPORTS)
+
 # Platform-specific library naming
 if(PLATFORM_WINDOWS)
     set_target_properties(potholenet_core PROPERTIES
         OUTPUT_NAME "potholenet_core"
-        PREFIX "lib"
+        PREFIX ""
         SUFFIX ".dll"
     )
 elseif(PLATFORM_ANDROID)
@@ -191,34 +190,12 @@ write_basic_package_version_file(
     COMPATIBILITY SameMajorVersion
 )
 
-configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/PotholeNetCoreConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/PotholeNetCoreConfig.cmake"
-    INSTALL_DESTINATION lib/cmake/PotholeNetCore
-)
-
 install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/PotholeNetCoreConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/PotholeNetCoreConfigVersion.cmake"
     DESTINATION lib/cmake/PotholeNetCore
 )
 
-# Build scripts
-# Windows build script
-if(PLATFORM_WINDOWS)
-    configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/build_windows.bat.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/build_windows.bat"
-        @ONLY
-    )
-endif()
-
-# Android build script
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/build_android.sh.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/build_android.sh"
-    @ONLY
-)
+# Build scripts are already present in root repository
 
 # Print configuration summary
 message(STATUS "PotholeNet v${PROJECT_VERSION} Configuration Summary:")

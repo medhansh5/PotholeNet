@@ -1,5 +1,5 @@
 """
-PotholeNet Web Server
+PotholeNet v3.0 Web Server
 
 Bridges the Python PotholeNet Engine with the JavaScript frontend
 Provides REST API endpoints and WebSocket for real-time updates
@@ -148,12 +148,12 @@ class PotholeNetAPIHandler(SimpleHTTPRequestHandler):
             # Store detection
             self.detections_db.append(detection_data)
             
-            # Broadcast to WebSocket clients
+            # Broadcast to WebSocket clients thread-safely
             if hasattr(self.server, 'websocket_manager'):
-                asyncio.run(self.server.websocket_manager.broadcast({
+                self.server.websocket_manager.broadcast_sync({
                     'type': 'pothole_detection',
                     'detection': detection_data
-                }))
+                })
             
             self.send_response(201)
             self.send_header('Content-Type', 'application/json')
@@ -171,6 +171,16 @@ class WebSocketManager:
     
     def __init__(self):
         self.clients = set()
+        self.loop = None
+    
+    def set_loop(self, loop):
+        """Store reference to running event loop for thread-safe broadcasts"""
+        self.loop = loop
+
+    def broadcast_sync(self, message):
+        """Thread-safe synchronous broadcast from background threads"""
+        if self.loop and self.loop.is_running():
+            asyncio.run_coroutine_threadsafe(self.broadcast(message), self.loop)
     
     async def register(self, websocket):
         """Register a new WebSocket client"""
@@ -235,6 +245,8 @@ class PotholeNetWebServer:
     
     async def start_websocket_server(self):
         """Start the WebSocket server"""
+        self.websocket_manager.set_loop(asyncio.get_running_loop())
+        
         async def handle_client(websocket, path):
             await self.websocket_manager.register(websocket)
             try:
@@ -303,11 +315,11 @@ class PotholeNetWebServer:
                             if hasattr(handler, 'detections_db'):
                                 handler.detections_db.append(detection)
                     
-                    # Broadcast via WebSocket
-                    asyncio.run(self.websocket_manager.broadcast({
+                    # Broadcast via WebSocket thread-safely
+                    self.websocket_manager.broadcast_sync({
                         'type': 'pothole_detection',
                         'detection': detection
-                    }))
+                    })
                 
                 time.sleep(0.5)  # One detection every 0.5 seconds
         

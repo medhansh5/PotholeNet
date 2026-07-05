@@ -1,5 +1,5 @@
 """
-PotholeNet Engine - Real-time Signal Processing and Classification Module
+PotholeNet v3.0 Engine - Real-time Signal Processing and Classification Module
 
 Role: Processes tri-axial accelerometer telemetry from Oppo F23 5G at 100Hz
 Core Logic: 4th-order Butterworth High-Pass Filter eliminates drift and engine vibrations
@@ -67,6 +67,7 @@ class SignalProcessor:
         
         # Primary filtering on Z-axis (vertical impacts)
         if data.shape[1] >= 4:  # time, x, y, z format
+            filtered_data[:, 0] = data[:, 0]  # Preserve timestamp
             filtered_data[:, 1] = self.apply_butterworth_highpass(data[:, 1], cutoff=8.0)  # X-axis
             filtered_data[:, 2] = self.apply_butterworth_highpass(data[:, 2], cutoff=8.0)  # Y-axis  
             filtered_data[:, 3] = self.apply_butterworth_highpass(data[:, 3], cutoff=12.0) # Z-axis (primary)
@@ -125,11 +126,15 @@ class SignalProcessor:
             high_freq_mask = (freqs >= 20) & (freqs <= 50)
             high_freq_power = np.sum(power_spectrum[high_freq_mask])
             
-            # Spectral centroid
-            spectral_centroid = np.sum(freqs[:len(freqs)//2] * power_spectrum[:len(freqs)//2]) / np.sum(power_spectrum[:len(freqs)//2])
+            # Spectral centroid (avoiding division by zero)
+            power_sum = np.sum(power_spectrum[:len(freqs)//2])
+            if power_sum > 0:
+                spectral_centroid = np.sum(freqs[:len(freqs)//2] * power_spectrum[:len(freqs)//2]) / power_sum
+            else:
+                spectral_centroid = 0.0
         else:
-            high_freq_power = 0
-            spectral_centroid = 0
+            high_freq_power = 0.0
+            spectral_centroid = 0.0
         
         return np.array([
             z_variance,
@@ -153,6 +158,19 @@ class PotholeClassifier:
         )
         self.scaler = StandardScaler()
         self.is_trained = False
+        
+        if model_path is None:
+            possible_paths = [
+                'models/potholenet_v3.pkl',
+                'models/shadow_v1.pkl',
+                'models/potholenet_v2.pkl',
+                'models/potholenet_v1.pkl',
+                'shadow_v1.pkl'
+            ]
+            for p in possible_paths:
+                if os.path.exists(p):
+                    model_path = p
+                    break
         
         if model_path and os.path.exists(model_path):
             self.load_model(model_path)
@@ -187,7 +205,11 @@ class PotholeClassifier:
         if not self.is_trained:
             raise ValueError("Model must be trained before prediction")
         
-        features_scaled = self.scaler.transform(features.reshape(1, -1))
+        if hasattr(self.scaler, 'mean_') and self.scaler.mean_ is not None:
+            features_scaled = self.scaler.transform(features.reshape(1, -1))
+        else:
+            features_scaled = features.reshape(1, -1)
+            
         prediction = self.model.predict(features_scaled)[0]
         confidence = np.max(self.model.predict_proba(features_scaled))
         
@@ -206,9 +228,14 @@ class PotholeClassifier:
     def load_model(self, path: str):
         """Load trained model and scaler"""
         model_data = joblib.load(path)
-        self.model = model_data['model']
-        self.scaler = model_data['scaler']
-        self.is_trained = model_data['is_trained']
+        if isinstance(model_data, dict) and 'model' in model_data:
+            self.model = model_data['model']
+            self.scaler = model_data.get('scaler', StandardScaler())
+            self.is_trained = model_data.get('is_trained', True)
+        else:
+            self.model = model_data
+            self.scaler = StandardScaler()
+            self.is_trained = True
         logger.info(f"Model loaded from {path}")
 
 class PotholeNetEngine:
@@ -242,40 +269,48 @@ class PotholeNetEngine:
         # Convert to numpy array
         data_array = np.array([[r.timestamp, r.x, r.y, r.z] for r in readings])
         
-        # Extract features
-        features = self.signal_processor.extract_features(data_array)
-        
-        # Classify
-        try:
-            prediction, confidence = self.classifier.predict(features)
-        except ValueError as e:
-            logger.error(f"Classification failed: {e}")
-            return []
-        
         detections = []
         current_time = time.time()
         
-        # Check for pothole detection
-        if prediction == 1 and confidence > 0.7:  # Pothole detected
-            if current_time - self.last_detection_time > self.detection_cooldown:
-                # Get location from last reading (app should provide GPS)
-                last_reading = readings[-1]
-                
-                # Determine severity based on confidence and feature magnitude
-                severity = self._determine_severity(confidence, features)
-                
-                detection = PotholeDetection(
-                    latitude=0.0,  # To be filled by app with GPS data
-                    longitude=0.0,  # To be filled by app with GPS data
-                    confidence=confidence,
-                    severity=severity,
-                    timestamp=current_time
-                )
-                
-                detections.append(detection)
-                self.last_detection_time = current_time
-                
-                logger.info(f"Pothole detected: confidence={confidence:.2f}, severity={severity}")
+        # Evaluate overlapping sliding windows of size window_size (100 samples, step 25)
+        step_size = 25
+        for i in range(0, len(data_array) - self.window_size + 1, step_size):
+            window = data_array[i:i+self.window_size]
+            features = self.signal_processor.extract_features(window)
+            
+            # Classify
+            try:
+                prediction, confidence = self.classifier.predict(features)
+            except ValueError as e:
+                logger.error(f"Classification failed: {e}")
+                continue
+            
+            # Check for pothole detection
+            if prediction == 1 and confidence >= 0.6:  # Pothole detected
+                if current_time - self.last_detection_time > self.detection_cooldown:
+                    # Get location from last reading in window
+                    window_end_idx = min(i + self.window_size - 1, len(readings) - 1)
+                    last_reading = readings[window_end_idx]
+                    
+                    # Determine severity based on confidence and feature magnitude
+                    severity = self._determine_severity(confidence, features)
+                    
+                    detection = PotholeDetection(
+                        latitude=0.0,  # To be filled by app with GPS data
+                        longitude=0.0,  # To be filled by app with GPS data
+                        confidence=confidence,
+                        severity=severity,
+                        timestamp=current_time
+                    )
+                    
+                    detections.append(detection)
+                    self.detection_buffer.append(detection.timestamp)
+                    if len(self.detection_buffer) > 1000:
+                        self.detection_buffer = self.detection_buffer[-1000:]
+                    self.last_detection_time = current_time
+                    
+                    logger.info(f"Pothole detected: confidence={confidence:.2f}, severity={severity}")
+                    break  # Enforce cooldown across remaining windows in buffer
         
         return detections
     
@@ -321,7 +356,7 @@ class PotholeNetEngine:
         metrics = self.classifier.train(features, labels)
         
         # Save model
-        model_path = 'models/potholenet_v2.pkl'
+        model_path = 'models/potholenet_v3.pkl'
         os.makedirs('models', exist_ok=True)
         self.classifier.save_model(model_path)
         
@@ -340,6 +375,18 @@ class PotholeNetEngine:
 # Convenience function for app.py integration
 def create_engine(model_path: Optional[str] = None) -> PotholeNetEngine:
     """Create and return PotholeNetEngine instance"""
+    if model_path is None:
+        possible_paths = [
+            'models/potholenet_v3.pkl',
+            'models/shadow_v1.pkl',
+            'models/potholenet_v2.pkl',
+            'models/potholenet_v1.pkl',
+            'shadow_v1.pkl'
+        ]
+        for p in possible_paths:
+            if os.path.exists(p):
+                model_path = p
+                break
     return PotholeNetEngine(model_path)
 
 if __name__ == "__main__":
@@ -350,4 +397,4 @@ if __name__ == "__main__":
     if os.path.exists('data/pothole_events.csv'):
         engine.train_model('data/pothole_events.csv')
     
-    print("PotholeNet Engine v2.0 - Ready for real-time processing")
+    print("PotholeNet Engine v3.0 - Ready for real-time processing")

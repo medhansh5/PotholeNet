@@ -1,5 +1,5 @@
 """
-PotholeNet App Integration Example
+PotholeNet v3.0 App Integration Example
 
 This file demonstrates how to integrate PotholeNet Engine with a mobile application (app.py)
 for real-time pothole detection using accelerometer data from Oppo F23 5G.

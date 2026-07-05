@@ -15,11 +15,17 @@ requests>=2.28.0
 # Flask Web Framework
 Flask>=2.3.0
 Flask-SQLAlchemy>=3.0.0
+flask-cors>=4.0.0
+
+# FastAPI & Database
+fastapi>=0.100.0
+uvicorn>=0.22.0
+psycopg2-binary>=2.9.0
 
 # Web Server
 websockets>=11.0.0
 
-#Visualization
+# Visualization
 matplotlib>=3.7.0
 
 # Testing (optional)

@@ -8,6 +8,10 @@
 #ifndef POTHOLENET_CORE_H
 #define POTHOLENET_CORE_H
 
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -104,8 +108,8 @@ POTHOLENET_API void set_detection_threshold(void* processor, double threshold);
 POTHOLENET_API bool is_processor_valid(void* processor);
 
 // Constants and configuration
-#define POTHOLENET_VERSION_MAJOR 2
-#define POTHOLENET_VERSION_MINOR 3
+#define POTHOLENET_VERSION_MAJOR 3
+#define POTHOLENET_VERSION_MINOR 0
 #define POTHOLENET_VERSION_PATCH 0
 
 // Default configuration values

@@ -63,9 +63,9 @@ class TestSignalProcessor(unittest.TestCase):
         n_samples = 100
         t = np.linspace(0, 1, n_samples)
         
-        # Simulate pothole impact on Z-axis
+        # Simulate pothole impact on Z-axis (35Hz impact + impulse above 12Hz cutoff)
         z_signal = np.random.randn(n_samples) * 0.1  # Background noise
-        z_signal[40:60] += 2.0 * np.exp(-((t[40:60] - 0.5) / 0.1)**2)  # Impact
+        z_signal[40:60] += 5.0 * np.sin(2 * np.pi * 35 * t[40:60]) + 5.0 * np.exp(-((t[40:60] - 0.5) / 0.02)**2)  # Impact
         
         # Create full data matrix
         data = np.column_stack([
@@ -157,16 +157,16 @@ class TestPotholeNetEngine(unittest.TestCase):
         readings = []
         
         for i in range(n_readings):
-            # Simulate pothole in the middle
+            # Simulate pothole in the middle (35Hz impact above 12Hz cutoff)
             if 50 <= i < 70:
-                z = 2.0 * np.exp(-((i - 60) / 10)**2)  # Impact
+                z = 10.0 * np.sin(2 * np.pi * 35 * (i * 0.01)) + 10.0 * np.exp(-((i - 60) / 5)**2)  # Impact
             else:
                 z = np.random.randn() * 0.1  # Noise
                 
             reading = SensorReading(
                 timestamp=i * 0.01,  # 100Hz
-                x=np.random.randn() * 0.1,
-                y=np.random.randn() * 0.1,
+                x=np.random.randn() * 0.02,
+                y=np.random.randn() * 0.02,
                 z=z
             )
             readings.append(reading)
@@ -175,7 +175,7 @@ class TestPotholeNetEngine(unittest.TestCase):
         detections = self.engine.process_sensor_data(readings)
         
         # Should detect pothole
-        self.assertGreaterEqual(len(detections), 0)
+        self.assertGreater(len(detections), 0)
         
     def test_detection_severity(self):
         """Test pothole severity determination"""
@@ -211,10 +211,10 @@ class TestCoordinateProcessor(unittest.TestCase):
         
     def test_distance_calculation(self):
         """Test distance calculation"""
-        # Distance between NYC coordinates
+        # Distance between NYC coordinates (~1 km apart)
         distance = CoordinateProcessor.calculate_distance(
             40.7128, -74.0060,  # Times Square
-            40.7580, -73.9855   # Central Park
+            40.7218, -74.0060   # 1 km North
         )
         
         # Should be approximately 1 km
@@ -293,16 +293,16 @@ class TestRealTimeSimulation(unittest.TestCase):
         for i in range(200):
             timestamp = start_time + i * 0.01
             
-            # Simulate pothole at 1 second mark
+            # Simulate pothole at 1 second mark (35Hz impact above 12Hz cutoff)
             if 100 <= i < 120:
-                z = 2.0 * np.exp(-((i - 110) / 10)**2)
+                z = 10.0 * np.sin(2 * np.pi * 35 * (i * 0.01)) + 10.0 * np.exp(-((i - 110) / 5)**2)
             else:
                 z = np.random.randn() * 0.1
             
             # Add sensor data with GPS
             api.add_sensor_data(timestamp, 
-                              np.random.randn() * 0.1,
-                              np.random.randn() * 0.1,
+                              np.random.randn() * 0.02,
+                              np.random.randn() * 0.02,
                               z,
                               40.7128 + i * 0.00001,
                               -74.0060 + i * 0.00001)

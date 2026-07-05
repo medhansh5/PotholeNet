@@ -1,10 +1,10 @@
 #!/bin/bash
-# PotholeNet v2.3 - Android Build Script
+# PotholeNet v3.0 - Android Build Script
 # Builds the native C++ library for Android deployment
 
 set -e
 
-echo "Building PotholeNet v2.3 Native Bridge for Android..."
+echo "Building PotholeNet v3.0 Native Bridge for Android..."
 echo
 
 # Check if Android NDK is available
@@ -78,6 +78,7 @@ mkdir -p android_libs/lib
 # Copy built libraries to Android structure
 for ABI in "${ABIS[@]}"; do
     if [ -f "install/$ABI/lib/libpotholenet_core.so" ]; then
+        mkdir -p "android_libs/lib/$ABI"
         cp "install/$ABI/lib/libpotholenet_core.so" "android_libs/lib/$ABI/"
         echo "✓ Copied libpotholenet_core.so for $ABI"
     else
@@ -94,16 +95,16 @@ cd ..
 # Create Flutter-ready directory structure
 echo "Creating Flutter-ready structure..."
 mkdir -p flutter_integration/android/src/main/jniLibs
-cp -r android_libs/lib/* flutter_integration/android/src/main/jniLibs/
+cp -r build_android/android_libs/lib/* flutter_integration/android/src/main/jniLibs/
 
 echo.
 echo "Android build completed successfully!"
 echo.
 echo "Output structure:"
-echo "  android_libs/"
+echo "  build_android/android_libs/"
 echo "    lib/"
 for ABI in "${ABIS[@]}"; do
-    if [ -f "android_libs/lib/$ABI/libpotholenet_core.so" ]; then
+    if [ -f "build_android/android_libs/lib/$ABI/libpotholenet_core.so" ]; then
         echo "      $ABI/libpotholenet_core.so ✓"
     fi
 done

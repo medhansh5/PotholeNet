@@ -1,5 +1,5 @@
 """
-PotholeNet v2.2 - Background Clustering Worker
+PotholeNet v3.0 - Background Clustering Worker
 
 Optimized background service for continuous telemetry processing
 without blocking main ingestion pipeline.
@@ -85,7 +85,8 @@ class TelemetryDataSource:
                         z_magnitude=float(row['z_magnitude']),
                         timestamp=float(row['timestamp']),
                         device_id=row['device_id'],
-                        speed_kmh=float(row['speed_kmh']) if row['speed_kmh'] else None
+                        speed=float(row['speed_kmh']) if row['speed_kmh'] else None,
+                        point_id=row['id']
                     )
                     telemetry_points.append(point)
                 
@@ -183,7 +184,7 @@ class ProductionClusteringWorker:
         self.is_running = True
         self.stats['start_time'] = datetime.utcnow()
         
-        logger.info("Starting PotholeNet v2.2 Background Clustering Worker")
+        logger.info("Starting PotholeNet v3.0 Background Clustering Worker")
         logger.info(f"Configuration: eps={self.eps_meters}m, min_samples={self.min_samples}")
         logger.info(f"Batch size: {self.batch_size}, Interval: {self.processing_interval}s")
         
@@ -295,8 +296,20 @@ class ProductionClusteringWorker:
                             event.start_time, event.end_time
                         ])
                 
+                # Mark ALL processed telemetry points (including noise points) as clustered
+                # to prevent infinite re-processing loops
+                all_point_ids = [p.point_id for p in telemetry_points if p.point_id is not None]
+                if all_point_ids:
+                    mark_all_query = """
+                        UPDATE raw_telemetry 
+                        SET clustered = TRUE, 
+                            clustered_at = CURRENT_TIMESTAMP
+                        WHERE id = ANY(%s) AND (clustered = FALSE OR clustered IS NULL)
+                    """
+                    cur.execute(mark_all_query, [all_point_ids])
+                
                 conn.commit()
-                logger.info(f"Stored {len(road_events)} road events in database")
+                logger.info(f"Stored {len(road_events)} road events and marked {len(all_point_ids)} telemetry points as processed")
                 
         except Exception as e:
             logger.error(f"Error storing road events: {str(e)}")

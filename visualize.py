@@ -1,3 +1,6 @@
+"""
+PotholeNet v3.0 - Telemetry Visualization Tool
+"""
 import sys
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -51,4 +54,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         run_visualization(sys.argv[1])
     else:
-        print("Usage: python visualise.py <path_to_csv>")
+        print("Usage: python visualize.py <path_to_csv>")

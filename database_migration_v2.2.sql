@@ -1,4 +1,4 @@
--- PotholeNet v2.2 - PostgreSQL/PostGIS Database Migration
+-- PotholeNet v3.0 - PostgreSQL/PostGIS Database Migration
 -- Spatial Aggregation Schema for Road Events
 
 -- Enable PostGIS extension if not already enabled
@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS raw_telemetry (
     z_magnitude DECIMAL(8, 4) NOT NULL,
     speed_kmh DECIMAL(6, 2),
     heading DECIMAL(6, 2),
+    clustered BOOLEAN DEFAULT FALSE,
+    clustered_at TIMESTAMP WITH TIME ZONE,
+    event_id VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
     -- PostGIS geometry column for spatial queries
@@ -26,6 +29,8 @@ CREATE TABLE IF NOT EXISTS raw_telemetry (
         ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
     ) STORED
 );
+
+CREATE INDEX IF NOT EXISTS idx_raw_telemetry_clustered ON raw_telemetry (clustered);
 
 -- Create spatial index on telemetry points
 CREATE INDEX IF NOT EXISTS idx_raw_telemetry_geom ON raw_telemetry USING GIST (geom);
@@ -61,9 +66,9 @@ CREATE TABLE IF NOT EXISTS road_events (
         ST_SetSRID(ST_MakePoint(center_longitude, center_latitude), 4326)
     ) STORED,
     
-    -- PostGIS circle geometry for spatial queries
+    -- PostGIS circle geometry for spatial queries (casted to geography for meters calculation)
     cluster_geom GEOMETRY(POLYGON, 4326) GENERATED ALWAYS AS (
-        ST_Buffer(center_geom, radius_meters)
+        ST_Buffer(center_geom::geography, radius_meters)::geometry
     ) STORED
 );
 
@@ -154,7 +159,7 @@ SELECT
         ELSE 'older'
     END as time_category,
     -- Calculate event density (events per km²)
-    (re.point_count::DECIMAL / (PI * (re.radius_meters^2) / 1000000)) as events_per_km2
+    (re.point_count::DECIMAL / (pi() * (re.radius_meters^2) / 1000000)) as events_per_km2
 FROM road_events re
 WHERE re.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days';
 
@@ -291,29 +296,32 @@ $$ LANGUAGE plpgsql;
 -- TRIGGERS FOR AUTOMATIC UPDATES
 -- ==========================================
 
--- Update road health zones when new events are created
+-- Update road health zones when new events are created (statement-level for O(N^2) prevention)
 CREATE OR REPLACE FUNCTION update_road_health_zones()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Update health scores for zones that contain this event
-    UPDATE road_health_zones 
+    -- Update health scores for zones that contain inserted events
+    UPDATE road_health_zones rhz
     SET 
-        event_count = event_count + 1,
+        event_count = rhz.event_count + (SELECT COUNT(*) FROM new_events ne WHERE ST_Contains(rhz.zone_geom, ne.center_geom)),
         health_score = calculate_road_health(
-            bounds_lat_min, bounds_lat_max,
-            bounds_lng_min, bounds_lng_max
+            rhz.bounds_lat_min, rhz.bounds_lat_max,
+            rhz.bounds_lng_min, rhz.bounds_lng_max
         ),
         last_calculated = CURRENT_TIMESTAMP
-    WHERE ST_Contains(zone_geom, NEW.center_geom);
+    WHERE EXISTS (
+        SELECT 1 FROM new_events ne WHERE ST_Contains(rhz.zone_geom, ne.center_geom)
+    );
     
-    RETURN NEW;
+    RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
--- Apply the trigger
+-- Apply the statement-level transition trigger
 CREATE TRIGGER trg_update_road_health
     AFTER INSERT ON road_events
-    FOR EACH ROW
+    REFERENCING NEW TABLE AS new_events
+    FOR EACH STATEMENT
     EXECUTE FUNCTION update_road_health_zones();
 
 -- ==========================================
@@ -328,9 +336,8 @@ CREATE INDEX IF NOT EXISTS idx_road_events_composite ON road_events
 CREATE INDEX IF NOT EXISTS idx_road_events_high_confidence ON road_events (center_geom) 
 WHERE confidence_score >= 0.8;
 
--- Partial index for recent events
-CREATE INDEX IF NOT EXISTS idx_road_events_recent ON road_events (created_at) 
-WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '7 days';
+-- Standard B-tree index for recent events query (avoiding non-immutable WHERE predicate)
+CREATE INDEX IF NOT EXISTS idx_road_events_created_at_desc ON road_events (created_at DESC);
 
 -- ==========================================
 -- SAMPLE DATA FOR TESTING
@@ -349,5 +356,5 @@ ON CONFLICT (zone_name) DO NOTHING;
 COMMIT;
 
 -- Migration completed successfully
--- Version: 2.2 - Spatial Aggregation
--- Features: DBSCAN clustering, PostGIS integration, Road Health scoring
+-- Version: 3.0 - Enterprise Spatial Aggregation
+-- Features: DBSCAN Ball Tree clustering, PostGIS geography buffer, Statement-level health triggers

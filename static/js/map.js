@@ -163,6 +163,7 @@ function addPotholeDetection(detection) {
         }
     }
     
+    const severity = detection.severity || 'medium';
     console.log(`Added ${severity} severity pothole at ${detection.latitude}, ${detection.longitude}`);
 }
 

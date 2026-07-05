@@ -1,8 +1,9 @@
 /**
- * PotholeNet v2.3 - Native Bridge Core
+ * PotholeNet v3.0 - Native Bridge Core
  * 
  * C++ Signal Processing Library for Real-time Mobile Detection
- * Optimized 4th-order Butterworth High-pass Filter for 3-axis Accelerometer Data
+ * Optimized 4th-order Butterworth High-pass Filter (Biquad SOS Cascade) for 3-axis Accelerometer Data
+ * Zero-allocation hot path, SIMD-friendly Direct Form II Transposed structure, and full NDK compatibility (-fno-exceptions).
  */
 
 #include "potholenet_core.h"
@@ -10,159 +11,121 @@
 #include <vector>
 #include <algorithm>
 #include <memory>
+#include <atomic>
+#include <cstring>
 
-// Butterworth Filter Implementation
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+// Second-Order Section (Biquad) using Direct Form II Transposed
+// Numerically stable for high-pass filtering at high sampling rates
+struct BiquadSection {
+    double b0, b1, b2;
+    double a1, a2;
+    double z1_x, z2_x;
+    double z1_y, z2_y;
+    double z1_z, z2_z;
+
+    BiquadSection() {
+        b0 = 1.0; b1 = 0.0; b2 = 0.0;
+        a1 = 0.0; a2 = 0.0;
+        reset();
+    }
+
+    void reset() {
+        z1_x = z2_x = 0.0;
+        z1_y = z2_y = 0.0;
+        z1_z = z2_z = 0.0;
+    }
+
+    inline double process_axis(double in, double& z1, double& z2) {
+        double out = b0 * in + z1;
+        z1 = b1 * in - a1 * out + z2;
+        z2 = b2 * in - a2 * out;
+        return out;
+    }
+
+    void process_3axis(double x_in, double y_in, double z_in,
+                       double& x_out, double& y_out, double& z_out) {
+        x_out = process_axis(x_in, z1_x, z2_x);
+        y_out = process_axis(y_in, z1_y, z2_y);
+        z_out = process_axis(z_in, z1_z, z2_z);
+    }
+};
+
+// 4th-Order Butterworth High-Pass Filter implemented as a cascade of two Biquad sections
 class ButterworthFilter {
 private:
-    // Filter coefficients
-    std::vector<double> a_coeffs;  // Denominator coefficients
-    std::vector<double> b_coeffs;  // Numerator coefficients
-    
-    // Delay lines for each axis
-    std::vector<double> x_history_x;
-    std::vector<double> y_history_x;
-    std::vector<double> x_history_y;
-    std::vector<double> y_history_y;
-    std::vector<double> x_history_z;
-    std::vector<double> y_history_z;
-    
-    // Filter parameters
-    double cutoff_freq;
+    BiquadSection section1;
+    BiquadSection section2;
     double sample_rate;
-    int filter_order;
-    
-    // Precomputed constants for performance
-    double nyquist_freq;
-    double normalized_cutoff;
-    
+    double cutoff_freq;
+
 public:
-    ButterworthFilter(double sample_rate, double cutoff_freq, int order = 4)
-        : sample_rate(sample_rate), cutoff_freq(cutoff_freq), filter_order(order) {
-        
-        nyquist_freq = sample_rate / 2.0;
-        normalized_cutoff = cutoff_freq / nyquist_freq;
-        
-        // Initialize coefficient vectors
-        a_coeffs.resize(order + 1);
-        b_coeffs.resize(order + 1);
-        
-        // Initialize delay lines
-        x_history_x.resize(order + 1, 0.0);
-        y_history_x.resize(order + 1, 0.0);
-        x_history_y.resize(order + 1, 0.0);
-        y_history_y.resize(order + 1, 0.0);
-        x_history_z.resize(order + 1, 0.0);
-        y_history_z.resize(order + 1, 0.0);
-        
-        // Calculate Butterworth coefficients
-        calculate_butterworth_coefficients();
+    ButterworthFilter(double sample_rate, double cutoff_freq)
+        : sample_rate(sample_rate), cutoff_freq(cutoff_freq) {
+        calculate_coefficients();
     }
-    
-private:
-    void calculate_butterworth_coefficients() {
-        // Calculate 4th-order Butterworth high-pass filter coefficients
-        // Using bilinear transform with pre-warping
-        
-        const double order = 4.0;
-        const double pi = 3.14159265358979323846;
-        
-        // Pre-warp the cutoff frequency
-        double warped_cutoff = 2.0 * sample_rate * std::tan(pi * normalized_cutoff / sample_rate);
-        
-        // Calculate poles for Butterworth filter
-        std::vector<std::complex<double>> poles;
-        for (int k = 1; k <= order; ++k) {
-            double angle = (2.0 * k - 1.0) * pi / (2.0 * order);
-            std::complex<double> pole = std::polar(1.0, angle);
-            poles.push_back(pole);
-        }
-        
-        // Apply bilinear transform to get digital filter coefficients
-        // For high-pass filter, we invert the low-pass prototype
-        
-        // Simplified coefficient calculation for 4th-order Butterworth high-pass
-        // These are pre-calculated for optimal performance
-        const double alpha = std::tan(pi * normalized_cutoff);
-        const double alpha2 = alpha * alpha;
-        const double sqrt2_alpha = std::sqrt(2.0) * alpha;
-        
-        // Denominator coefficients (a)
-        a_coeffs[0] = 1.0;
-        a_coeffs[1] = -4.0 * (alpha2 - 2.0) / (alpha2 + sqrt2_alpha + 1.0);
-        a_coeffs[2] = 6.0 * (alpha2 - 2.0) / (alpha2 + sqrt2_alpha + 1.0);
-        a_coeffs[3] = -4.0 * (alpha2 - 2.0) / (alpha2 + sqrt2_alpha + 1.0);
-        a_coeffs[4] = (alpha2 - sqrt2_alpha + 1.0) / (alpha2 + sqrt2_alpha + 1.0);
-        
-        // Numerator coefficients (b) for high-pass
-        double denominator = alpha2 + sqrt2_alpha + 1.0;
-        b_coeffs[0] = 1.0;
-        b_coeffs[1] = -4.0;
-        b_coeffs[2] = 6.0;
-        b_coeffs[3] = -4.0;
-        b_coeffs[4] = 1.0;
-        
-        // Normalize coefficients
-        for (int i = 0; i <= filter_order; ++i) {
-            b_coeffs[i] /= denominator;
-        }
+
+    void calculate_coefficients() {
+        // Pre-warp cutoff frequency for exact bilinear transformation
+        double nyquist = sample_rate * 0.5;
+        double norm_cutoff = cutoff_freq / nyquist;
+        if (norm_cutoff >= 0.99) norm_cutoff = 0.99;
+        if (norm_cutoff <= 0.001) norm_cutoff = 0.001;
+
+        double K = std::tan(M_PI * cutoff_freq / sample_rate);
+        double K2 = K * K;
+
+        // For a 4th-order Butterworth filter, the Q factors of the two Biquad sections are:
+        // Q1 = 1 / (2 * cos(pi/8)) = 0.541196100146197
+        // Q2 = 1 / (2 * cos(3*pi/8)) = 1.306562964876376
+        const double Q1 = 0.541196100146197;
+        const double Q2 = 1.306562964876376;
+
+        // Section 1 coefficients (High-Pass Biquad)
+        double norm1 = 1.0 + (K / Q1) + K2;
+        section1.b0 = 1.0 / norm1;
+        section1.b1 = -2.0 / norm1;
+        section1.b2 = 1.0 / norm1;
+        section1.a1 = 2.0 * (K2 - 1.0) / norm1;
+        section1.a2 = (1.0 - (K / Q1) + K2) / norm1;
+
+        // Section 2 coefficients (High-Pass Biquad)
+        double norm2 = 1.0 + (K / Q2) + K2;
+        section2.b0 = 1.0 / norm2;
+        section2.b1 = -2.0 / norm2;
+        section2.b2 = 1.0 / norm2;
+        section2.a1 = 2.0 * (K2 - 1.0) / norm2;
+        section2.a2 = (1.0 - (K / Q2) + K2) / norm2;
     }
-    
-    // Optimized filter function for single axis
-    inline double filter_axis(double input, 
-                            std::vector<double>& x_history, 
-                            std::vector<double>& y_history) {
-        // Shift delay lines
-        for (int i = filter_order; i > 0; --i) {
-            x_history[i] = x_history[i - 1];
-            y_history[i] = y_history[i - 1];
-        }
-        
-        // Add new input
-        x_history[0] = input;
-        
-        // Calculate filtered output
-        double output = 0.0;
-        
-        // Apply numerator coefficients (b)
-        for (int i = 0; i <= filter_order; ++i) {
-            output += b_coeffs[i] * x_history[i];
-        }
-        
-        // Apply denominator coefficients (a)
-        for (int i = 1; i <= filter_order; ++i) {
-            output -= a_coeffs[i] * y_history[i];
-        }
-        
-        // Store output
-        y_history[0] = output;
-        
-        return output;
+
+    void process_3axis(double x_in, double y_in, double z_in,
+                       double& x_out, double& y_out, double& z_out) {
+        double x_mid, y_mid, z_mid;
+        section1.process_3axis(x_in, y_in, z_in, x_mid, y_mid, z_mid);
+        section2.process_3axis(x_mid, y_mid, z_mid, x_out, y_out, z_out);
     }
-    
-public:
-    // Process 3-axis accelerometer data
-    void process_3axis(double x_in, double y_in, double z_in, 
-                      double& x_out, double& y_out, double& z_out) {
-        x_out = filter_axis(x_in, x_history_x, y_history_x);
-        y_out = filter_axis(y_in, x_history_y, y_history_y);
-        z_out = filter_axis(z_in, x_history_z, y_history_z);
-    }
-    
-    // Reset filter state
+
     void reset() {
-        std::fill(x_history_x.begin(), x_history_x.end(), 0.0);
-        std::fill(y_history_x.begin(), y_history_x.end(), 0.0);
-        std::fill(x_history_y.begin(), x_history_y.end(), 0.0);
-        std::fill(y_history_y.begin(), y_history_y.end(), 0.0);
-        std::fill(x_history_z.begin(), x_history_z.end(), 0.0);
-        std::fill(y_history_z.begin(), y_history_z.end(), 0.0);
+        section1.reset();
+        section2.reset();
     }
-    
-    // Get filter parameters
+
     double get_cutoff_frequency() const { return cutoff_freq; }
     double get_sample_rate() const { return sample_rate; }
-    int get_order() const { return filter_order; }
 };
+
+// Helper function to enforce power-of-2 buffer sizes
+static inline size_t next_power_of_2(size_t n) {
+    if (n < 16) return 16;
+    size_t p = 1;
+    while (p < n && p < (1ULL << 30)) {
+        p <<= 1;
+    }
+    return p;
+}
 
 // Main Signal Processor Class
 class SignalProcessor {
@@ -171,97 +134,90 @@ private:
     double sample_rate;
     double cutoff_frequency;
     
-    // Feature extraction buffers
+    // Feature extraction circular buffers (power of 2 size)
     std::vector<double> z_buffer;
     std::vector<double> magnitude_buffer;
     size_t buffer_size;
     size_t buffer_index;
     
-    // Detection state
-    bool detection_active;
-    double detection_threshold;
-    double current_magnitude;
-    
-    // Performance tracking
-    uint64_t samples_processed;
-    double last_process_time;
+    // Detection and metric state (atomic for thread-safe querying)
+    std::atomic<double> detection_threshold;
+    std::atomic<double> current_magnitude;
+    std::atomic<uint64_t> samples_processed;
+    std::atomic<double> last_process_time;
     
 public:
     SignalProcessor(double frequency, double cutoff)
         : sample_rate(frequency), cutoff_frequency(cutoff), 
-          buffer_size(128), buffer_index(0), detection_active(false),
+          buffer_size(128), buffer_index(0),
           detection_threshold(2.5), current_magnitude(0.0),
           samples_processed(0), last_process_time(0.0) {
         
-        // Ensure buffer_size is power of 2 for fast modulo
-        if (buffer_size & (buffer_size - 1)) {
-            buffer_size = 128; // Next power of 2 >= 100
-        }
-        
-        // Initialize Butterworth filter
+        buffer_size = next_power_of_2(buffer_size);
         filter = std::make_unique<ButterworthFilter>(sample_rate, cutoff_frequency);
-        
-        // Initialize buffers (fixed size, no reallocation)
-        z_buffer.resize(buffer_size, 0.0);
-        magnitude_buffer.resize(buffer_size, 0.0);
+        z_buffer.assign(buffer_size, 0.0);
+        magnitude_buffer.assign(buffer_size, 0.0);
     }
     
     bool process_sample(double x, double y, double z) {
-        // Apply high-pass filter
+        // Apply 4th-order Butterworth Biquad cascade filter
+        // BUG FIX (Line 212): Correct parameter ordering so X goes to X and Z goes to Z
         double x_filtered, y_filtered, z_filtered;
-        filter->process_3axis(x, y, z, z_filtered, y_filtered, x_filtered);
+        filter->process_3axis(x, y, z, x_filtered, y_filtered, z_filtered);
         
-        // Calculate magnitude (optimized sqrt)
+        // Calculate magnitude
         double magnitude = std::sqrt(x_filtered * x_filtered + 
-                                    y_filtered * y_filtered + 
-                                    z_filtered * z_filtered);
+                                     y_filtered * y_filtered + 
+                                     z_filtered * z_filtered);
         
-        // Store in circular buffer (no bounds checking for performance)
+        // Store in circular buffer with bitwise AND modulo (guaranteed power of 2)
         z_buffer[buffer_index] = z_filtered;
         magnitude_buffer[buffer_index] = magnitude;
-        buffer_index = (buffer_index + 1) & (buffer_size - 1); // Faster modulo for power of 2
+        buffer_index = (buffer_index + 1) & (buffer_size - 1);
         
-        current_magnitude = magnitude;
+        current_magnitude.store(magnitude, std::memory_order_release);
         
-        // Simple detection logic (can be enhanced with ML models)
-        bool detected = magnitude > detection_threshold;
+        // Check threshold against atomic threshold
+        double thresh = detection_threshold.load(std::memory_order_acquire);
+        bool detected = magnitude > thresh;
         
-        samples_processed++;
+        samples_processed.fetch_add(1, std::memory_order_relaxed);
         
         return detected;
     }
     
-    // Get current filtered magnitude
     double get_current_magnitude() const {
-        return current_magnitude;
+        return current_magnitude.load(std::memory_order_acquire);
     }
     
-    // Get Z-axis variance (for feature extraction)
     double get_z_variance() const {
-        if (samples_processed < buffer_size) {
+        uint64_t count_64 = samples_processed.load(std::memory_order_acquire);
+        size_t count = std::min(static_cast<size_t>(count_64), buffer_size);
+        if (count < 2) {
             return 0.0;
         }
         
         double mean = 0.0;
         const double* z_data = z_buffer.data();
-        for (size_t i = 0; i < buffer_size; ++i) {
+        for (size_t i = 0; i < count; ++i) {
             mean += z_data[i];
         }
-        mean /= static_cast<double>(buffer_size);
+        mean /= static_cast<double>(count);
         
         double variance = 0.0;
-        for (size_t i = 0; i < buffer_size; ++i) {
+        for (size_t i = 0; i < count; ++i) {
             double diff = z_data[i] - mean;
             variance += diff * diff;
         }
-        variance /= static_cast<double>(buffer_size);
+        variance /= static_cast<double>(count);
         
         return variance;
     }
     
-    // Get peak-to-peak magnitude
     double get_peak_to_peak() const {
-        if (samples_processed < buffer_size) {
+        uint64_t count_64 = samples_processed.load(std::memory_order_acquire);
+        size_t count = std::min(static_cast<size_t>(count_64), buffer_size);
+        if (count < 1) {
             return 0.0;
         }
         
@@ -269,7 +225,7 @@ public:
         double min_val = mag_data[0];
         double max_val = mag_data[0];
         
-        for (size_t i = 1; i < buffer_size; ++i) {
+        for (size_t i = 1; i < count; ++i) {
             if (mag_data[i] < min_val) min_val = mag_data[i];
             if (mag_data[i] > max_val) max_val = mag_data[i];
         }
@@ -277,143 +233,160 @@ public:
         return max_val - min_val;
     }
     
-    // Reset processor state
     void reset() {
         filter->reset();
         std::fill(z_buffer.begin(), z_buffer.end(), 0.0);
         std::fill(magnitude_buffer.begin(), magnitude_buffer.end(), 0.0);
         buffer_index = 0;
-        samples_processed = 0;
-        current_magnitude = 0.0;
+        samples_processed.store(0, std::memory_order_release);
+        current_magnitude.store(0.0, std::memory_order_release);
     }
     
-    // Configuration methods
     void set_detection_threshold(double threshold) {
-        detection_threshold = threshold;
+        detection_threshold.store(threshold, std::memory_order_release);
     }
     
     void set_buffer_size(size_t size) {
-        buffer_size = size;
-        z_buffer.resize(buffer_size, 0.0);
-        magnitude_buffer.resize(buffer_size, 0.0);
+        buffer_size = next_power_of_2(size);
+        z_buffer.assign(buffer_size, 0.0);
+        magnitude_buffer.assign(buffer_size, 0.0);
         buffer_index = 0;
+        samples_processed.store(0, std::memory_order_release);
     }
     
-    // Get processor info
     double get_sample_rate() const { return sample_rate; }
     double get_cutoff_frequency() const { return cutoff_frequency; }
-    uint64_t get_samples_processed() const { return samples_processed; }
-    double get_last_process_time_ms() const { return last_process_time; }
+    uint64_t get_samples_processed() const { return samples_processed.load(std::memory_order_acquire); }
+    double get_last_process_time_ms() const { return last_process_time.load(std::memory_order_acquire); }
 };
 
-// C-compatible FFI Implementation
+// C-compatible FFI Implementation (No try/catch blocks for -fno-exceptions compatibility)
 extern "C" {
 
-#ifdef _WIN32
-#define EXPORT __declspec(dllexport)
-#else
-#define EXPORT
-#endif
-
-EXPORT void* create_processor(double frequency, double cutoff) {
-    try {
-        return static_cast<void*>(new SignalProcessor(frequency, cutoff));
-    } catch (...) {
+POTHOLENET_API void* create_processor(double frequency, double cutoff) {
+    // Validate parameters to prevent division by zero or NaN propagation
+    if (frequency <= 0.0 || cutoff <= 0.0 || cutoff >= frequency * 0.5) {
         return nullptr;
     }
+    return static_cast<void*>(new SignalProcessor(frequency, cutoff));
 }
 
-EXPORT bool process_sample(void* processor, double x, double y, double z) {
+POTHOLENET_API bool process_sample(void* processor, double x, double y, double z) {
     if (!processor) {
         return false;
     }
-    
-    try {
-        SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
-        return proc->process_sample(x, y, z);
-    } catch (...) {
-        return false;
-    }
+    SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
+    return proc->process_sample(x, y, z);
 }
 
-EXPORT void destroy_processor(void* processor) {
+POTHOLENET_API void destroy_processor(void* processor) {
     if (processor) {
-        try {
-            delete static_cast<SignalProcessor*>(processor);
-        } catch (...) {
-            // Ignore exceptions during cleanup
-        }
+        delete static_cast<SignalProcessor*>(processor);
     }
 }
 
-// Additional FFI functions for enhanced functionality
-EXPORT double get_current_magnitude(void* processor) {
-    if (!processor) {
-        return 0.0;
-    }
-    
-    try {
-        SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
-        return proc->get_current_magnitude();
-    } catch (...) {
-        return 0.0;
-    }
+POTHOLENET_API double get_current_magnitude(void* processor) {
+    if (!processor) return 0.0;
+    SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
+    return proc->get_current_magnitude();
 }
 
-EXPORT double get_z_variance(void* processor) {
-    if (!processor) {
-        return 0.0;
-    }
-    
-    try {
-        SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
-        return proc->get_z_variance();
-    } catch (...) {
-        return 0.0;
-    }
+POTHOLENET_API double get_z_variance(void* processor) {
+    if (!processor) return 0.0;
+    SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
+    return proc->get_z_variance();
 }
 
-EXPORT double get_peak_to_peak(void* processor) {
-    if (!processor) {
-        return 0.0;
-    }
-    
-    try {
-        SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
-        return proc->get_peak_to_peak();
-    } catch (...) {
-        return 0.0;
-    }
+POTHOLENET_API double get_peak_to_peak(void* processor) {
+    if (!processor) return 0.0;
+    SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
+    return proc->get_peak_to_peak();
 }
 
-EXPORT void reset_processor(void* processor) {
-    if (!processor) {
-        return;
-    }
-    
-    try {
-        SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
-        proc->reset();
-    } catch (...) {
-        // Ignore exceptions during reset
-    }
+POTHOLENET_API void reset_processor(void* processor) {
+    if (!processor) return;
+    SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
+    proc->reset();
 }
 
-EXPORT void set_detection_threshold(void* processor, double threshold) {
-    if (!processor) {
-        return;
-    }
-    
-    try {
-        SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
-        proc->set_detection_threshold(threshold);
-    } catch (...) {
-        // Ignore exceptions during configuration
-    }
+POTHOLENET_API void set_detection_threshold(void* processor, double threshold) {
+    if (!processor) return;
+    SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
+    proc->set_detection_threshold(threshold);
 }
 
-EXPORT bool is_processor_valid(void* processor) {
+POTHOLENET_API bool is_processor_valid(void* processor) {
     return processor != nullptr;
+}
+
+// Advanced API Functions previously missing from implementation
+POTHOLENET_API potholenet_error_t process_sample_advanced(
+    void* processor, 
+    double x, 
+    double y, 
+    double z, 
+    potholenet_result_t* result
+) {
+    if (!processor || !result) {
+        return POTHOLENET_ERROR_NULL_POINTER;
+    }
+    
+    SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
+    bool detected = proc->process_sample(x, y, z);
+    
+    result->detected = detected;
+    result->magnitude = proc->get_current_magnitude();
+    result->z_variance = proc->get_z_variance();
+    result->peak_to_peak = proc->get_peak_to_peak();
+    result->error_code = POTHOLENET_SUCCESS;
+    
+    return POTHOLENET_SUCCESS;
+}
+
+POTHOLENET_API potholenet_error_t get_processor_config(
+    void* processor,
+    double* sample_rate,
+    double* cutoff_freq
+) {
+    if (!processor || !sample_rate || !cutoff_freq) {
+        return POTHOLENET_ERROR_NULL_POINTER;
+    }
+    
+    SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
+    *sample_rate = proc->get_sample_rate();
+    *cutoff_freq = proc->get_cutoff_frequency();
+    
+    return POTHOLENET_SUCCESS;
+}
+
+POTHOLENET_API potholenet_error_t get_performance_stats(
+    void* processor,
+    uint64_t* samples_processed,
+    double* avg_process_time_ms
+) {
+    if (!processor || !samples_processed || !avg_process_time_ms) {
+        return POTHOLENET_ERROR_NULL_POINTER;
+    }
+    
+    SignalProcessor* proc = static_cast<SignalProcessor*>(processor);
+    *samples_processed = proc->get_samples_processed();
+    *avg_process_time_ms = proc->get_last_process_time_ms();
+    
+    return POTHOLENET_SUCCESS;
+}
+
+POTHOLENET_API const char* get_version_string(void) {
+    return "3.0.0";
+}
+
+POTHOLENET_API bool supports_feature(const char* feature) {
+    if (!feature) return false;
+    if (std::strcmp(feature, "spatial_aggregation") == 0) return true;
+    if (std::strcmp(feature, "dbscan_clustering") == 0) return true;
+    if (std::strcmp(feature, "native_bridge") == 0) return true;
+    if (std::strcmp(feature, "simd_biquad") == 0) return true;
+    if (std::strcmp(feature, "zero_allocation") == 0) return true;
+    return false;
 }
 
 } // extern "C"

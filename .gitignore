@@ -14,3 +14,7 @@ env/
 
 # Visualization Output
 impact_analysis.png
+
+# Database and Instance files
+instance/
+*.db
